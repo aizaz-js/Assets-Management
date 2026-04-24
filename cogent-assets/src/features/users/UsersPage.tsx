@@ -8,13 +8,15 @@ import { Button } from '@/components/ui/Button'
 import { SearchInput } from '@/components/ui/SearchInput'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Tooltip } from '@/components/ui/Tooltip'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { UserDetailDrawer } from './UserDetailDrawer'
 import { AddEmployeeModal } from './AddEmployeeModal'
 import { EditUserModal } from './EditUserModal'
-import { useUsers } from '@/hooks/useUsers'
-import type { Profile, UserRole } from '@/types'
-import { Users, UserPlus, Pencil } from 'lucide-react'
+import { useUsers, useDeleteUser, type ProfileWithAssetCount } from '@/hooks/useUsers'
+import type { UserRole } from '@/types'
+import { Users, UserPlus, Pencil, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import toast from 'react-hot-toast'
 
 const roleBadgeVariant: Record<UserRole, 'admin' | 'manager' | 'finance' | 'employee'> = {
   admin: 'admin',
@@ -26,14 +28,27 @@ const roleBadgeVariant: Record<UserRole, 'admin' | 'manager' | 'finance' | 'empl
 export function UsersPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | ''>('')
-  const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null)
+  const [selectedProfile, setSelectedProfile] = useState<ProfileWithAssetCount | null>(null)
   const [addOpen, setAddOpen] = useState(false)
-  const [editProfile, setEditProfile] = useState<Profile | null>(null)
+  const [editProfile, setEditProfile] = useState<ProfileWithAssetCount | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ProfileWithAssetCount | null>(null)
 
   const { data: users, isLoading } = useUsers({
     status: statusFilter || undefined,
     search: search || undefined,
   })
+  const deleteUser = useDeleteUser()
+
+  async function handleDelete() {
+    if (!deleteTarget) return
+    try {
+      await deleteUser.mutateAsync(deleteTarget.id)
+      toast.success(`${deleteTarget.name} removed`)
+      setDeleteTarget(null)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete user')
+    }
+  }
 
   return (
     <motion.div
@@ -92,7 +107,7 @@ export function UsersPage() {
             </tr>
           </TableHead>
           <TableBody>
-            {isLoading && <TableSkeleton rows={6} cols={6} />}
+            {isLoading && <TableSkeleton rows={6} cols={7} />}
             {!isLoading && (users ?? []).map((user) => (
               <Tr key={user.id} onClick={() => setSelectedProfile(user)}>
                 <Td>
@@ -123,14 +138,24 @@ export function UsersPage() {
                   </Badge>
                 </Td>
                 <Td onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                  <Tooltip content="Edit user">
-                    <button
-                      className="p-1.5 rounded hover:bg-gray-100 transition-colors text-slate-500 hover:text-[var(--color-primary)]"
-                      onClick={() => setEditProfile(user)}
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                  </Tooltip>
+                  <div className="flex items-center gap-1">
+                    <Tooltip content="Edit user">
+                      <button
+                        className="p-1.5 rounded hover:bg-gray-100 transition-colors text-slate-500 hover:text-[var(--color-primary)]"
+                        onClick={() => setEditProfile(user)}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="Delete user">
+                      <button
+                        className="p-1.5 rounded hover:bg-[var(--color-danger-light)] transition-colors text-slate-500 hover:text-[var(--color-danger)]"
+                        onClick={() => setDeleteTarget(user)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </Tooltip>
+                  </div>
                 </Td>
               </Tr>
             ))}
@@ -161,6 +186,21 @@ export function UsersPage() {
           profile={editProfile}
         />
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete User"
+        description={
+          deleteTarget
+            ? `Remove ${deleteTarget.name} from the system? This cannot be undone.${deleteTarget.asset_count > 0 ? ` This user has ${deleteTarget.asset_count} asset(s) assigned — unassign them first.` : ''}`
+            : ''
+        }
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleteUser.isPending}
+      />
     </motion.div>
   )
 }

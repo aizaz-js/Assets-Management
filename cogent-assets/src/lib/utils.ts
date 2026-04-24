@@ -35,6 +35,15 @@ export function getInitials(name: string): string {
     .toUpperCase()
 }
 
+export function formatDateTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—'
+  try {
+    return format(parseISO(dateStr), "dd MMM yyyy 'at' h:mm a")
+  } catch {
+    return dateStr
+  }
+}
+
 export function daysAgo(dateStr: string): number {
   const date = new Date(dateStr)
   const now = new Date()

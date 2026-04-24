@@ -50,7 +50,6 @@ export function AssetDetailDrawer({ assetId, open, onClose, onEdit }: AssetDetai
               <Row label="Classification" value={
                 <Badge variant={asset.classification}>{asset.classification === 'employee_allocated' ? 'Employee Allocated' : 'Company Allocated'}</Badge>
               } />
-              <Row label="Condition" value={asset.condition} />
               <Row label="Specs" value={asset.specs} />
               {asset.serial_number && <Row label="Serial No." value={<span className="font-mono">{asset.serial_number}</span>} />}
               {asset.asset_type === 'mobile' && asset.pta_status && <Row label="PTA Status" value={asset.pta_status.replace('_', ' ')} />}
@@ -66,8 +65,6 @@ export function AssetDetailDrawer({ assetId, open, onClose, onEdit }: AssetDetai
               <Row label="Invoice" value={asset.invoice_number} />
               <Row label="Price" value={formatPKR(asset.price_pkr)} />
               <Row label="Purchase Date" value={formatDate(asset.purchase_date)} />
-              <Row label="Warranty Expiry" value={formatDate(asset.warranty_expiry)} />
-              <Row label="Warranty Type" value={asset.warranty_type} />
             </div>
           </section>
 
@@ -146,8 +143,8 @@ export function AssetDetailDrawer({ assetId, open, onClose, onEdit }: AssetDetai
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex gap-2 text-sm">
-      <span className="text-[var(--color-text-secondary)] w-32 flex-shrink-0">{label}</span>
-      <span className="text-[var(--color-text)] flex-1">{value ?? '—'}</span>
+      <span className="text-[var(--color-text-secondary)] w-28 flex-shrink-0">{label}</span>
+      <span className="text-sm text-[var(--color-text)] flex-1 break-words min-w-0">{value ?? '—'}</span>
     </div>
   )
 }

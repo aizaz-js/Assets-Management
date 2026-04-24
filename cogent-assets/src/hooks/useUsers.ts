@@ -1,6 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { Profile } from '@/types'
+import type { Profile, AuditAction } from '@/types'
+
+export interface UserAuditEntry {
+  id: string
+  asset_id: string
+  action: AuditAction
+  created_at: string
+  asset: { asset_tag: string; asset_type: string } | null
+}
 
 interface UserFilter {
   status?: 'active' | 'inactive'
@@ -81,6 +89,35 @@ export function useCreateUser() {
       if (error) throw error
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  })
+}
+
+export function useDeleteUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('profiles').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  })
+}
+
+export function useUserAuditLog(userId: string | null) {
+  return useQuery<UserAuditEntry[]>({
+    queryKey: ['user-audit', userId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('asset_audit_log')
+        .select('id, asset_id, action, created_at, asset:assets!asset_id(asset_tag, asset_type)')
+        .eq('actor_id', userId!)
+        .order('created_at', { ascending: false })
+        .limit(20)
+      if (error) throw error
+      return (data ?? []) as unknown as UserAuditEntry[]
+    },
+    enabled: !!userId,
+    staleTime: 30 * 1000,
   })
 }
 

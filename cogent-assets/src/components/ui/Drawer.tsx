@@ -23,18 +23,18 @@ export function Drawer({ open, onClose, title, children, width = 480 }: DrawerPr
             onClick={onClose}
           />
           <motion.div
-            className="fixed top-0 right-0 h-full bg-white shadow-[var(--shadow-modal)] z-50 flex flex-col overflow-hidden"
-            style={{ width }}
-            initial={{ x: width }}
+            className="fixed top-0 right-0 h-full bg-white shadow-2xl z-50 flex flex-col overflow-hidden w-full"
+            style={{ maxWidth: width }}
+            initial={{ x: '100%' }}
             animate={{ x: 0 }}
-            exit={{ x: width }}
+            exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.25, ease: 'easeInOut' }}
           >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[var(--color-border)] sticky top-0 bg-white z-10">
               <h2 className="section-title">{title}</h2>
               <button
                 onClick={onClose}
-                className="text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors p-1 rounded"
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 flex-shrink-0 text-gray-500 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>

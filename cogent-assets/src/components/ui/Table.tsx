@@ -13,7 +13,7 @@ interface TableSkeletonProps {
 export function Table({ children, className }: TableProps) {
   return (
     <div className={cn('w-full overflow-x-auto', className)}>
-      <table className="w-full border-collapse">{children}</table>
+      <table className="min-w-[640px] w-full border-collapse">{children}</table>
     </div>
   )
 }
