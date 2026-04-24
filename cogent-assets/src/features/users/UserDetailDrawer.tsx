@@ -1,12 +1,20 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
+import { Trash2 } from 'lucide-react'
 import { Drawer } from '@/components/ui/Drawer'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { Tooltip } from '@/components/ui/Tooltip'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AssetStatusBadge } from '@/components/shared/AssetStatusBadge'
 import { AssetTypeIcon } from '@/components/shared/AssetTypeIcon'
 import { OffboardingModal } from './OffboardingModal'
-import { useUserAssets } from '@/hooks/useUsers'
+import { useUserAssets, useUserAuditLog } from '@/hooks/useUsers'
+import { useAuth } from '@/features/auth/useAuth'
+import { supabase } from '@/lib/supabase'
+import { formatDateTime } from '@/lib/utils'
 import type { Profile, UserRole } from '@/types'
 
 interface UserDetailDrawerProps {
@@ -22,11 +30,61 @@ const roleBadgeVariant: Record<UserRole, 'admin' | 'manager' | 'finance' | 'empl
   employee: 'employee',
 }
 
+const ACTION_LABELS: Record<string, string> = {
+  created: 'Asset added',
+  updated: 'Asset updated',
+  status_changed: 'Status changed',
+  assigned: 'Asset assigned',
+  returned: 'Asset returned',
+  repair_opened: 'Sent to repair',
+  repair_closed: 'Repair completed',
+  retired: 'Asset retired',
+}
+
 export function UserDetailDrawer({ profile, open, onClose }: UserDetailDrawerProps) {
   const [offboardingOpen, setOffboardingOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const { user: currentUser } = useAuth()
+  const qc = useQueryClient()
   const { data: assets } = useUserAssets(profile?.id ?? null)
+  const { data: auditLog } = useUserAuditLog(profile?.id ?? null)
 
   if (!profile) return null
+
+  const isSelf = currentUser?.id === profile.id
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      // Unlink any assets first
+      await supabase
+        .from('assets')
+        .update({ allotted_user_id: null, status: 'available' })
+        .eq('allotted_user_id', profile!.id)
+        .neq('status', 'retired')
+
+      const { error } = await supabase.from('profiles').delete().eq('id', profile!.id)
+      if (error) throw error
+
+      qc.invalidateQueries({ queryKey: ['users'] })
+      qc.invalidateQueries({ queryKey: ['assets'] })
+      qc.invalidateQueries({ queryKey: ['user-assets', profile!.id] })
+
+      toast.success(`${profile!.name} has been removed`)
+      if (!profile!.manually_created) {
+        toast('Note: This user signed in via Google — their auth account was not removed.', { icon: 'ℹ️' })
+      }
+
+      setDeleteOpen(false)
+      onClose()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete user')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <>
@@ -51,6 +109,16 @@ export function UserDetailDrawer({ profile, open, onClose }: UserDetailDrawerPro
                 </Badge>
               </div>
             </div>
+            {!isSelf && (
+              <Tooltip content="Delete user">
+                <button
+                  className="p-1.5 rounded hover:bg-[var(--color-danger-light)] text-slate-400 hover:text-[var(--color-danger)] transition-colors flex-shrink-0"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </Tooltip>
+            )}
           </div>
 
           {/* Assets */}
@@ -83,8 +151,42 @@ export function UserDetailDrawer({ profile, open, onClose }: UserDetailDrawerPro
             )}
           </section>
 
-          {/* Offboard */}
-          {profile.status === 'active' && (
+          {/* Activity Log */}
+          {auditLog && auditLog.length > 0 && (
+            <section>
+              <h3 className="section-title mb-3">Recent Activity</h3>
+              <div className="space-y-2">
+                {auditLog.map((entry) => (
+                  <div key={entry.id} className="flex items-start gap-3 p-3 bg-[var(--color-bg)] rounded-lg">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] mt-1.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-[var(--color-text)]">
+                        {ACTION_LABELS[entry.action] ?? entry.action}
+                        {entry.asset && (
+                          <span className="ml-1 font-mono text-xs font-semibold text-[var(--color-primary)]">
+                            {entry.asset.asset_tag}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-secondary)]">
+                        {formatDateTime(entry.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Offboard / inactive notice */}
+          {profile.status === 'inactive' ? (
+            <div className="border-t border-[var(--color-border)] pt-4">
+              <p className="text-sm text-[var(--color-text-secondary)] text-center">
+                Marked inactive
+                {profile.updated_at ? ` on ${formatDateTime(profile.updated_at)}` : ''}
+              </p>
+            </div>
+          ) : (
             <div className="border-t border-[var(--color-border)] pt-4">
               <Button
                 variant="danger"
@@ -106,6 +208,21 @@ export function UserDetailDrawer({ profile, open, onClose }: UserDetailDrawerPro
           onComplete={() => { setOffboardingOpen(false); onClose() }}
         />
       )}
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={handleDelete}
+        title="Delete Employee"
+        description={`Remove ${profile.name} from the system? This cannot be undone.${
+          assets && assets.length > 0
+            ? ` Their ${assets.length} asset(s) will be unlinked and set to available.`
+            : ''
+        }`}
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleting}
+      />
     </>
   )
 }

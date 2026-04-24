@@ -15,13 +15,23 @@ function GoogleIcon() {
   )
 }
 
+const ERROR_MESSAGES: Record<string, string> = {
+  wrong_domain: 'Only @cogentlabs.co email addresses are allowed.',
+  not_admin: 'Access denied. Only admin users can log in to this portal. Contact your administrator.',
+  no_session: 'Sign in failed. Please try again.',
+  access_denied: 'Access denied. Contact your administrator.',
+  domain: 'Only @cogentlabs.co email addresses are allowed.',
+  auth: 'Authentication failed. Please try again.',
+}
+
 export function LoginPage() {
   const { user, signIn, loading } = useAuth()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const [signingIn, setSigningIn] = useState(false)
 
-  const error = params.get('error')
+  const errorParam = params.get('error')
+  const errorMessage = errorParam ? (ERROR_MESSAGES[errorParam] ?? 'Something went wrong. Please try again.') : null
 
   useEffect(() => {
     if (!loading && user) {
@@ -58,21 +68,9 @@ export function LoginPage() {
         </div>
         <p className="text-sm text-[var(--color-text-secondary)] mb-8">Every asset, accounted for</p>
 
-        {/* Error callout */}
-        {error === 'domain' && (
-          <div className="mb-4 p-3 rounded-lg bg-[var(--color-danger-light)] border border-[var(--color-danger)]/20 text-sm text-[var(--color-danger)] text-left">
-            Access denied. Only <strong>@cogentlabs.co</strong> accounts are permitted.
-          </div>
-        )}
-        {error === 'auth' && (
-          <div className="mb-4 p-3 rounded-lg bg-[var(--color-danger-light)] border border-[var(--color-danger)]/20 text-sm text-[var(--color-danger)] text-left">
-            Authentication failed. Please try again.
-          </div>
-        )}
-        {error === 'access_denied' && (
+        {errorMessage && (
           <div className="mb-4 p-3 rounded-lg bg-[var(--color-danger-light)] border border-[var(--color-danger)]/20 text-sm text-[var(--color-danger)] text-center">
-            Access denied. Only admin users can log in to this portal.
-            Contact your administrator to request access.
+            {errorMessage}
           </div>
         )}
 
@@ -87,7 +85,7 @@ export function LoginPage() {
         </Button>
 
         <p className="mt-4 text-xs text-[var(--color-text-secondary)]">
-          Only @cogentlabs.co accounts are permitted
+          Only @cogentlabs.co admin accounts are permitted
         </p>
       </motion.div>
     </div>

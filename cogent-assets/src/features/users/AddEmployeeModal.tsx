@@ -1,12 +1,13 @@
+import { useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import toast from 'react-hot-toast'
+import { useQueryClient } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
-import { useCreateUser } from '@/hooks/useUsers'
 import { supabase } from '@/lib/supabase'
 
 const schema = z.object({
@@ -34,7 +35,8 @@ interface AddEmployeeModalProps {
 }
 
 export function AddEmployeeModal({ open, onClose }: AddEmployeeModalProps) {
-  const createUser = useCreateUser()
+  const qc = useQueryClient()
+  const [submitting, setSubmitting] = useState(false)
 
   const {
     register,
@@ -48,7 +50,6 @@ export function AddEmployeeModal({ open, onClose }: AddEmployeeModalProps) {
   })
 
   async function onSubmit(values: FormValues) {
-    // Duplicate email check
     const { data: existing } = await supabase
       .from('profiles')
       .select('id')
@@ -60,30 +61,38 @@ export function AddEmployeeModal({ open, onClose }: AddEmployeeModalProps) {
       return
     }
 
+    setSubmitting(true)
     try {
-      await createUser.mutateAsync({
-        name: values.name,
-        email: values.email.toLowerCase(),
+      const { error } = await supabase.from('profiles').insert({
+        id: crypto.randomUUID(),
+        name: values.name.trim(),
+        email: values.email.trim().toLowerCase(),
         role: values.role,
-        designation: values.designation || null,
-        department: values.department || null,
+        designation: values.designation?.trim() || null,
+        department: values.department?.trim() || null,
+        status: 'active',
+        manually_created: true,
       })
+
+      if (error) {
+        if (error.code === '23505') {
+          toast.error('An employee with this email already exists')
+        } else if (error.code === '42501') {
+          toast.error('Permission denied. Make sure you are logged in as admin.')
+        } else {
+          toast.error(error.message || 'Failed to add employee')
+        }
+        return
+      }
+
+      qc.invalidateQueries({ queryKey: ['users'] })
       toast.success('Employee added successfully')
       reset()
       onClose()
     } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'code' in err) {
-        const code = (err as { code: string }).code
-        if (code === '23505') {
-          toast.error('An employee with this email already exists')
-        } else if (code === '42501') {
-          toast.error('Permission denied. Make sure you are logged in as admin.')
-        } else {
-          toast.error('Failed to add employee')
-        }
-      } else {
-        toast.error(err instanceof Error ? err.message : 'Failed to add employee')
-      }
+      toast.error(err instanceof Error ? err.message : 'Failed to add employee')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -96,19 +105,19 @@ export function AddEmployeeModal({ open, onClose }: AddEmployeeModalProps) {
       footer={
         <>
           <Button variant="secondary" onClick={() => { reset(); onClose() }}>Cancel</Button>
-          <Button variant="primary" onClick={handleSubmit(onSubmit)} loading={createUser.isPending}>
+          <Button variant="primary" onClick={handleSubmit(onSubmit)} loading={submitting}>
             Add Employee
           </Button>
         </>
       }
     >
       <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input label="Full Name *" {...register('name')} error={errors.name?.message} />
           <Input label="Email *" type="email" {...register('email')} error={errors.email?.message} />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input label="Designation" {...register('designation')} error={errors.designation?.message} />
           <Input label="Department" {...register('department')} error={errors.department?.message} />
         </div>
