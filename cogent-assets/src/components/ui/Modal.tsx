@@ -36,7 +36,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: M
             <Dialog.Content asChild>
               <motion.div
                 className={cn(
-                  'fixed left-1/2 top-1/2 z-50 w-full bg-white rounded-xl shadow-[var(--shadow-modal)] flex flex-col max-h-[90vh]',
+                  'fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] bg-white rounded-xl shadow-[var(--shadow-modal)] flex flex-col max-h-[90vh]',
                   sizeClasses[size]
                 )}
                 initial={{ opacity: 0, scale: 0.95, x: '-50%', y: '-50%' }}

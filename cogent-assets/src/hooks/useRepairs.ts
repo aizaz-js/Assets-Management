@@ -1,7 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/features/auth/useAuth'
-import type { RepairRecord, RepairStatus } from '@/types'
+import type { RepairRecord, RepairStatus, AssetType } from '@/types'
+
+export interface RepairHistoryRecord extends Omit<RepairRecord, 'asset'> {
+  asset?: {
+    id: string
+    asset_tag: string
+    asset_type: AssetType
+    specs: string
+    allotted_user_id: string | null
+    allotted_user: { name: string } | null
+  }
+}
 
 interface RepairsFilter {
   status?: RepairStatus | RepairStatus[]
@@ -149,6 +160,22 @@ export function useUpdateRepair() {
       if (error) throw error
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['repairs'] }),
+  })
+}
+
+export function useRepairHistory() {
+  return useQuery<RepairHistoryRecord[]>({
+    queryKey: ['repairs-history'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('repair_records')
+        .select('*, asset:assets!asset_id(id,asset_tag,asset_type,specs,allotted_user_id,allotted_user:profiles!allotted_user_id(name))')
+        .eq('status', 'completed')
+        .order('completed_at', { ascending: false })
+      if (error) throw error
+      return (data ?? []) as RepairHistoryRecord[]
+    },
+    staleTime: 60 * 1000,
   })
 }
 

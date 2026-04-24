@@ -104,12 +104,12 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 								</motion.span>
 							)}
 							{!collapsed && showBadge && openCount > 0 && (
-								<span className='bg-[var(--color-danger)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center relative z-10'>
+								<span className='ml-auto min-w-5 h-5 px-1.5 rounded-full bg-[var(--color-primary)] text-white text-xs font-semibold flex items-center justify-center relative z-10'>
 									{openCount}
 								</span>
 							)}
 							{collapsed && showBadge && openCount > 0 && (
-								<span className='absolute top-1 right-1 w-2 h-2 bg-[var(--color-danger)] rounded-full z-10' />
+								<span className='absolute top-1 right-1 w-2 h-2 bg-[var(--color-primary)] rounded-full z-10' />
 							)}
 						</NavLink>
 					);

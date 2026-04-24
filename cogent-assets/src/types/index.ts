@@ -49,6 +49,8 @@ export interface Profile {
   engagement_end_date: string | null
   status: 'active' | 'inactive'
   created_at: string
+  updated_at?: string | null
+  manually_created?: boolean
 }
 
 export interface Asset {

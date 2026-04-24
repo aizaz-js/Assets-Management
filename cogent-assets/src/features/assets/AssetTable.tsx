@@ -107,7 +107,7 @@ export function AssetTable({
               <Th>Specs</Th>
               <Th>Price</Th>
               <Th>Vendor</Th>
-              <Th>Serial No.</Th>
+              <Th>{assetType === 'mobile' ? 'IMEI' : 'Serial No.'}</Th>
               <Th>{classification === 'employee_allocated' ? 'Allotted To' : 'Location'}</Th>
               <Th>Status</Th>
               <Th>Actions</Th>

@@ -61,6 +61,7 @@ export function EditCategoryModal({ open, onClose, category }: EditCategoryModal
   async function onSubmit(values: FormValues) {
     try {
       await updateCategory.mutateAsync({
+        id: category.id,
         type_key: category.type_key,
         label: values.label,
         tag_prefix: values.tag_prefix.toUpperCase(),

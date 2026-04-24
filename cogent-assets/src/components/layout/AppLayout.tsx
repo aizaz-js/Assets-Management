@@ -118,7 +118,7 @@ export function AppLayout() {
                         <Icon className="w-5 h-5 flex-shrink-0" />
                         <span className="flex-1 truncate">{label}</span>
                         {showBadge && openCount > 0 && (
-                          <span className="bg-[var(--color-danger)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                          <span className="bg-[var(--color-primary)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
                             {openCount}
                           </span>
                         )}
