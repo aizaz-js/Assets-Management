@@ -1,24 +1,36 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Pencil, LayoutGrid } from 'lucide-react'
+import { Pencil, LayoutGrid, Plus, Trash2 } from 'lucide-react'
+import * as LucideIcons from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { AssetTypeIcon } from '@/components/shared/AssetTypeIcon'
 import { EditCategoryModal } from './EditCategoryModal'
-import { useCategories, useUpdateCategory, type CategoryConfig } from '@/hooks/useCategories'
-import type { AssetType } from '@/types'
+import { AddCategoryModal } from './AddCategoryModal'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { useCategories, useUpdateCategory, useDeleteCategory, type CategoryConfig } from '@/hooks/useCategories'
+import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
+
+function getIcon(iconName: string | undefined): React.ComponentType<{ className?: string; size?: number }> {
+  if (!iconName) return LucideIcons.Package as React.ComponentType<{ className?: string; size?: number }>
+  const Icon = (LucideIcons as Record<string, unknown>)[iconName] as React.ComponentType<{ className?: string; size?: number }> | undefined
+  return Icon ?? (LucideIcons.Package as React.ComponentType<{ className?: string; size?: number }>)
+}
 
 function CategoryCard({
   category,
   onEdit,
   onToggle,
+  onDelete,
   toggling,
 }: {
   category: CategoryConfig
   onEdit: (c: CategoryConfig) => void
   onToggle: (c: CategoryConfig) => void
+  onDelete: (c: CategoryConfig) => void
   toggling: boolean
 }) {
+  const Icon = getIcon(category.icon)
+
   return (
     <motion.div
       layout
@@ -30,7 +42,10 @@ function CategoryCard({
       {/* Header row */}
       <div className="flex items-start justify-between">
         <div className={`w-10 h-10 flex items-center justify-center rounded-xl ${category.is_active ? 'bg-[var(--color-primary)]/10' : 'bg-gray-100'}`}>
-          <AssetTypeIcon type={category.type_key as AssetType} size={22} className={category.is_active ? '' : '!text-gray-400'} />
+          <Icon
+            size={22}
+            className={category.is_active ? 'text-[var(--color-primary)]' : 'text-gray-400'}
+          />
         </div>
         <div className="flex items-center gap-1.5">
           <button
@@ -39,6 +54,13 @@ function CategoryCard({
             title="Edit"
           >
             <Pencil className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => onDelete(category)}
+            className="p-1.5 rounded hover:bg-red-50 transition-colors text-slate-400 hover:text-red-500"
+            title="Delete"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
           </button>
           <button
             disabled={toggling}
@@ -76,9 +98,14 @@ function CategoryCard({
 
 export function SettingsPage() {
   const [editCategory, setEditCategory] = useState<CategoryConfig | null>(null)
+  const [addClassification, setAddClassification] = useState<'employee_allocated' | 'company_allocated' | null>(null)
+  const [deleteCategory, setDeleteCategory] = useState<CategoryConfig | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [togglingKey, setTogglingKey] = useState<string | null>(null)
+
   const { data: categories, isLoading } = useCategories()
   const updateCategory = useUpdateCategory()
+  const deleteCategoryMutation = useDeleteCategory()
 
   const employeeCategories = (categories ?? [])
     .filter((c) => c.classification === 'employee_allocated')
@@ -97,6 +124,32 @@ export function SettingsPage() {
       toast.error('Failed to update category')
     } finally {
       setTogglingKey(null)
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteCategory) return
+    setDeleting(true)
+    try {
+      // Check if any assets exist for this category
+      const { count } = await supabase
+        .from('assets')
+        .select('id', { count: 'exact', head: true })
+        .eq('asset_type', deleteCategory.type_key)
+
+      if (count && count > 0) {
+        toast.error(`Cannot delete — ${count} asset${count === 1 ? '' : 's'} exist with this type`)
+        setDeleteCategory(null)
+        return
+      }
+
+      await deleteCategoryMutation.mutateAsync(deleteCategory.id)
+      toast.success(`${deleteCategory.label} deleted`)
+      setDeleteCategory(null)
+    } catch {
+      toast.error('Failed to delete category')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -131,12 +184,19 @@ export function SettingsPage() {
           <>
             {/* Employee Assets */}
             <div className="mb-6">
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-3 mb-3">
                 <span className="w-2 h-2 rounded-full bg-[var(--color-allotted)]" />
                 <p className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide">
                   Employee Assets
                 </p>
                 <span className="text-xs text-[var(--color-text-secondary)]">({employeeCategories.length})</span>
+                <button
+                  onClick={() => setAddClassification('employee_allocated')}
+                  className="ml-auto flex items-center gap-1 text-xs font-medium text-[var(--color-primary)] hover:underline"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Category
+                </button>
               </div>
               <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))' }}>
                 {employeeCategories.map((cat) => (
@@ -145,6 +205,7 @@ export function SettingsPage() {
                     category={cat}
                     onEdit={setEditCategory}
                     onToggle={handleToggle}
+                    onDelete={setDeleteCategory}
                     toggling={togglingKey === cat.type_key}
                   />
                 ))}
@@ -153,12 +214,19 @@ export function SettingsPage() {
 
             {/* Company Assets */}
             <div>
-              <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center gap-3 mb-3">
                 <span className="w-2 h-2 rounded-full bg-[var(--color-primary)]" />
                 <p className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide">
                   Company Assets
                 </p>
                 <span className="text-xs text-[var(--color-text-secondary)]">({companyCategories.length})</span>
+                <button
+                  onClick={() => setAddClassification('company_allocated')}
+                  className="ml-auto flex items-center gap-1 text-xs font-medium text-[var(--color-primary)] hover:underline"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Category
+                </button>
               </div>
               <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))' }}>
                 {companyCategories.map((cat) => (
@@ -167,6 +235,7 @@ export function SettingsPage() {
                     category={cat}
                     onEdit={setEditCategory}
                     onToggle={handleToggle}
+                    onDelete={setDeleteCategory}
                     toggling={togglingKey === cat.type_key}
                   />
                 ))}
@@ -183,6 +252,28 @@ export function SettingsPage() {
           category={editCategory}
         />
       )}
+
+      {addClassification && (
+        <AddCategoryModal
+          open={!!addClassification}
+          onClose={() => setAddClassification(null)}
+          classification={addClassification}
+          nextSortOrder={
+            (addClassification === 'employee_allocated' ? employeeCategories : companyCategories).length + 1
+          }
+        />
+      )}
+
+      <ConfirmDialog
+        open={!!deleteCategory}
+        onClose={() => setDeleteCategory(null)}
+        onConfirm={handleDelete}
+        title={`Delete '${deleteCategory?.label}'?`}
+        description={`This will remove it from the category grid. Existing assets of this type will not be deleted.`}
+        confirmLabel="Delete"
+        variant="danger"
+        loading={deleting}
+      />
     </motion.div>
   )
 }

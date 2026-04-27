@@ -69,7 +69,7 @@ export function AssetDetailDrawer({ assetId, open, onClose, onEdit }: AssetDetai
           </section>
 
           {/* Assignment */}
-          {asset.allotted_user && (
+          {asset.status === 'allotted' && asset.allotted_user && (
             <section>
               <h3 className="section-title mb-3">Assigned To</h3>
               <div className="flex items-center gap-3 p-3 bg-[var(--color-bg)] rounded-lg">

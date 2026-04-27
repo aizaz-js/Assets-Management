@@ -4,6 +4,7 @@ import { useAuth } from '@/features/auth/useAuth'
 import type { RepairRecord, RepairStatus, AssetType } from '@/types'
 
 export interface RepairHistoryRecord extends Omit<RepairRecord, 'asset'> {
+  original_user?: { id: string; name: string; email: string } | null
   asset?: {
     id: string
     asset_tag: string
@@ -51,10 +52,10 @@ export function useCreateRepair() {
   const { user } = useAuth()
 
   return useMutation({
-    mutationFn: async (values: Omit<RepairRecord, 'id' | 'created_at' | 'completed_at' | 'actual_return_date' | 'final_cost_pkr' | 'resolved_status' | 'asset'>) => {
+    mutationFn: async ({ original_user_id, ...values }: Omit<RepairRecord, 'id' | 'created_at' | 'completed_at' | 'actual_return_date' | 'final_cost_pkr' | 'resolved_status' | 'asset'> & { original_user_id?: string | null }) => {
       const { data, error } = await supabase
         .from('repair_records')
-        .insert({ ...values, created_by: user!.id, status: 'open' })
+        .insert({ ...values, created_by: user!.id, status: 'open', original_user_id: original_user_id ?? null })
         .select()
         .single()
       if (error) throw error
@@ -169,11 +170,17 @@ export function useRepairHistory() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('repair_records')
-        .select('*, asset:assets!asset_id(id,asset_tag,asset_type,specs,allotted_user_id,allotted_user:profiles!allotted_user_id(name))')
+        .select(`
+          id, fault_description, repair_vendor_name, date_sent,
+          actual_return_date, final_cost_pkr, resolved_status, completed_at,
+          original_user_id,
+          original_user:profiles!original_user_id(id, name, email),
+          asset:assets!asset_id(asset_tag, asset_type, specs)
+        `)
         .eq('status', 'completed')
         .order('completed_at', { ascending: false })
       if (error) throw error
-      return (data ?? []) as RepairHistoryRecord[]
+      return (data ?? []) as unknown as RepairHistoryRecord[]
     },
     staleTime: 60 * 1000,
   })
