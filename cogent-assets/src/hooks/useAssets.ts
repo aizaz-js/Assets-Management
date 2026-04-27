@@ -4,14 +4,13 @@ import { useAuth } from '@/features/auth/useAuth';
 import type {
 	Asset,
 	AssetStatus,
-	AssetType,
 	Classification,
 	AuditAction,
 } from '@/types';
 
 interface AssetsFilter {
 	classification?: Classification;
-	asset_type?: AssetType;
+	asset_type?: string;
 	status?: AssetStatus | AssetStatus[];
 	search?: string;
 }

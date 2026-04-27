@@ -99,6 +99,7 @@ export interface RepairRecord {
   insurance_claim: boolean
   status: RepairStatus
   resolved_status: 'available' | 'allotted' | 'retired' | null
+  original_user_id?: string | null
   created_by: string
   created_at: string
   completed_at: string | null

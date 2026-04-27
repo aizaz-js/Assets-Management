@@ -10,6 +10,7 @@ export interface CategoryConfig {
   classification: 'employee_allocated' | 'company_allocated'
   is_active: boolean
   sort_order: number
+  icon?: string
 }
 
 export function useCategories() {
@@ -18,7 +19,7 @@ export function useCategories() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('asset_categories')
-        .select('*')
+        .select('id, name, slug, classification, icon, is_active, sort_order')
         .order('classification', { ascending: true })
         .order('sort_order', { ascending: true })
 
@@ -26,12 +27,13 @@ export function useCategories() {
 
       return (data ?? []).map((row) => ({
         id: row.id,
-        type_key: row.slug ?? row.type_key ?? '',
-        label: row.name ?? ASSET_TYPE_LABELS[row.slug ?? row.type_key ?? ''] ?? '',
-        tag_prefix: row.tag_prefix ?? ASSET_TAG_PREFIXES[row.slug ?? row.type_key ?? ''] ?? 'OTH',
+        type_key: row.slug ?? '',
+        label: row.name ?? ASSET_TYPE_LABELS[row.slug ?? ''] ?? '',
+        tag_prefix: ASSET_TAG_PREFIXES[row.slug ?? ''] ?? 'OTH',
         classification: (row.classification ?? 'employee_allocated') as CategoryConfig['classification'],
         is_active: row.is_active ?? true,
         sort_order: row.sort_order ?? 0,
+        icon: row.icon ?? undefined,
       }))
     },
     staleTime: 60 * 1000,
@@ -47,10 +49,55 @@ export function useUpdateCategory() {
         .update({
           name: config.label,
           is_active: config.is_active,
+          icon: config.icon ?? null,
         })
         .eq('id', config.id)
       if (error) throw error
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['categories'] }),
+  })
+}
+
+export function useAddCategory() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (values: {
+      name: string
+      classification: 'employee_allocated' | 'company_allocated'
+      icon: string
+      sort_order: number
+    }) => {
+      const slug = values.name.toLowerCase().replace(/\s+/g, '_')
+      const { error } = await supabase.from('asset_categories').insert({
+        name: values.name,
+        slug,
+        classification: values.classification,
+        icon: values.icon,
+        is_active: true,
+        sort_order: values.sort_order,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['categories'] })
+      qc.invalidateQueries({ queryKey: ['assets'] })
+    },
+  })
+}
+
+export function useDeleteCategory() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (categoryId: string) => {
+      const { error } = await supabase
+        .from('asset_categories')
+        .delete()
+        .eq('id', categoryId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['categories'] })
+      qc.invalidateQueries({ queryKey: ['assets'] })
+    },
   })
 }

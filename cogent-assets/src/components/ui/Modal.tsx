@@ -33,7 +33,7 @@ export function Modal({ open, onClose, title, children, footer, size = 'md' }: M
                 transition={{ duration: 0.15 }}
               />
             </Dialog.Overlay>
-            <Dialog.Content asChild>
+            <Dialog.Content asChild aria-describedby={undefined}>
               <motion.div
                 className={cn(
                   'fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] bg-white rounded-xl shadow-[var(--shadow-modal)] flex flex-col max-h-[90vh]',
