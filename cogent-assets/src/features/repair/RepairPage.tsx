@@ -207,7 +207,11 @@ export function RepairPage() {
                 <Th>Days Taken</Th>
                 <Th>Final Cost</Th>
                 <Th>Resolved As</Th>
-                <Th>Assigned To</Th>
+                <Th>
+                  <Tooltip content="The employee who had this asset when it was sent for repair">
+                    <span>Responsible User</span>
+                  </Tooltip>
+                </Th>
               </tr>
             </TableHead>
             <TableBody>
@@ -242,7 +246,7 @@ export function RepairPage() {
                     ) : '—'}
                   </Td>
                   <Td>
-                    {repair.asset?.allotted_user?.name ?? '—'}
+                    {(repair as import('@/hooks/useRepairs').RepairHistoryRecord).original_user?.name ?? '—'}
                   </Td>
                 </Tr>
               ))}

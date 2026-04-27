@@ -7,6 +7,7 @@ import { AssetCategoryGrid } from './AssetCategoryGrid'
 import { AssetTable } from './AssetTable'
 import { AddAssetModal } from './AddAssetModal'
 import { useAssets } from '@/hooks/useAssets'
+import { useCategories } from '@/hooks/useCategories'
 import type { AssetType } from '@/types'
 import { cn } from '@/lib/utils'
 
@@ -14,12 +15,17 @@ type TabType = 'employee_allocated' | 'company_allocated'
 
 export function AssetsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('employee_allocated')
-  const [selectedType, setSelectedType] = useState<AssetType | null>(null)
+  const [selectedType, setSelectedType] = useState<string | null>(null)
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
 
   const { data: assets } = useAssets({ classification: activeTab })
+  const { data: allCategories } = useCategories()
+
+  const activeCategories = (allCategories ?? [])
+    .filter((c) => c.classification === activeTab && c.is_active)
+    .sort((a, b) => a.sort_order - b.sort_order)
 
   function handleTabChange(tab: TabType) {
     setActiveTab(tab)
@@ -28,7 +34,7 @@ export function AssetsPage() {
     setSearchQuery('')
   }
 
-  function handleSelectType(type: AssetType) {
+  function handleSelectType(type: string) {
     setSelectedType(type)
     setStatusFilter('all')
     setSearchQuery('')
@@ -86,7 +92,7 @@ export function AssetsPage() {
           >
             <AssetCategoryGrid
               assets={assets ?? []}
-              classification={activeTab}
+              categories={activeCategories}
               onSelectType={handleSelectType}
             />
           </motion.div>
@@ -116,7 +122,7 @@ export function AssetsPage() {
         open={addModalOpen}
         onClose={() => setAddModalOpen(false)}
         defaultClassification={activeTab}
-        defaultType={selectedType ?? undefined}
+        defaultType={selectedType as AssetType | undefined}
       />
     </motion.div>
   )

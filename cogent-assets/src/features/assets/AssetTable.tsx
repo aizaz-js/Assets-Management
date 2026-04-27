@@ -18,12 +18,12 @@ import { RetireAssetModal } from './RetireAssetModal'
 import { useAssets } from '@/hooks/useAssets'
 import { ASSET_TYPE_LABELS, STATUS_OPTIONS } from '@/lib/constants'
 import { formatPKR } from '@/lib/utils'
-import type { Asset, AssetType, Classification, AssetStatus } from '@/types'
+import type { Asset, Classification, AssetStatus } from '@/types'
 import { Package } from 'lucide-react'
 
 interface AssetTableProps {
   classification: Classification
-  assetType: AssetType
+  assetType: string
   onBack: () => void
   onAddAsset: () => void
   statusFilter: string
@@ -135,15 +135,15 @@ export function AssetTable({
                 </Td>
                 <Td>
                   {classification === 'employee_allocated' ? (
-                    asset.allotted_user ? (
+                    asset.status === 'allotted' && asset.allotted_user ? (
                       <div className="flex items-center gap-2">
                         <Avatar src={asset.allotted_user.avatar_url} name={asset.allotted_user.name} size="sm" />
                         <span className="text-xs">{asset.allotted_user.name}</span>
                       </div>
-                    ) : asset.allotted_user_name ? (
+                    ) : asset.status === 'allotted' && asset.allotted_user_name ? (
                       <span className="text-xs">{asset.allotted_user_name}</span>
                     ) : (
-                      <span className="text-[var(--color-text-secondary)] text-xs">Unassigned</span>
+                      <span className="text-gray-400 text-xs">—</span>
                     )
                   ) : (
                     <span className="text-xs">{asset.location ?? '—'}</span>

@@ -48,6 +48,7 @@ export function StartRepairModal({ open, onClose, asset }: StartRepairModalProps
         insurance_claim: false,
         status: 'open' as const,
         created_by: '',
+        original_user_id: asset.allotted_user_id ?? null,
       })
       toast.success('Repair record created. Asset moved to In Repair.')
       reset()
