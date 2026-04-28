@@ -168,19 +168,40 @@ export function useRepairHistory() {
   return useQuery<RepairHistoryRecord[]>({
     queryKey: ['repairs-history'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: repairs, error } = await supabase
         .from('repair_records')
         .select(`
           id, fault_description, repair_vendor_name, date_sent,
           actual_return_date, final_cost_pkr, resolved_status, completed_at,
           original_user_id,
-          original_user:profiles!original_user_id(id, name, email),
           asset:assets!asset_id(asset_tag, asset_type, specs)
         `)
         .eq('status', 'completed')
         .order('completed_at', { ascending: false })
       if (error) throw error
-      return (data ?? []) as unknown as RepairHistoryRecord[]
+
+      const repairData = (repairs ?? []) as (typeof repairs extends (infer T)[] ? T : never)[]
+      const userIds = [...new Set(
+        repairData
+          .map((r) => (r as Record<string, unknown>).original_user_id as string | undefined)
+          .filter((id): id is string => !!id)
+      )]
+
+      let userMap: Record<string, { id: string; name: string; email: string }> = {}
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, name, email')
+          .in('id', userIds)
+        userMap = Object.fromEntries(
+          (profiles ?? []).map((u) => [u.id, { id: u.id, name: u.name as string, email: (u as Record<string, unknown>).email as string }])
+        )
+      }
+
+      return repairData.map((r) => {
+        const uid = (r as Record<string, unknown>).original_user_id as string | undefined
+        return { ...r, original_user: uid ? (userMap[uid] ?? null) : null }
+      }) as unknown as RepairHistoryRecord[]
     },
     staleTime: 60 * 1000,
   })

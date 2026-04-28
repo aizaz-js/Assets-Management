@@ -25,6 +25,27 @@ import { cn } from '@/lib/utils';
 
 type Tab = 'active' | 'history';
 
+function getRepairDuration(
+	dateSent: string | null | undefined,
+	expectedReturn: string | null | undefined,
+): number {
+	if (!dateSent || !expectedReturn) return 0;
+	const sent = new Date(dateSent);
+	const expected = new Date(expectedReturn);
+	if (isNaN(sent.getTime()) || isNaN(expected.getTime())) return 0;
+	return Math.max(0, Math.floor(
+		(expected.getTime() - sent.getTime()) / (1000 * 60 * 60 * 24),
+	));
+}
+
+
+
+const resolvedStatusLabel: Record<string, string> = {
+	available: 'Available',
+	allotted: 'Allotted',
+	retired: 'Retired',
+};
+
 export function RepairPage() {
 	const [tab, setTab] = useState<Tab>('active');
 	const [viewRepair, setViewRepair] = useState<RepairRecord | null>(null);
@@ -37,51 +58,6 @@ export function RepairPage() {
 		status: 'open',
 	});
 	const { data: history, isLoading: loadingHistory } = useRepairHistory();
-
-	function daysFromSent(dateSent: string): number {
-		if (!dateSent) return 0;
-		try {
-			const sent = new Date(dateSent);
-			const today = new Date();
-			const diff = Math.floor(
-				(today.getTime() - sent.getTime()) / (1000 * 60 * 60 * 24),
-			);
-			return Math.max(0, diff);
-		} catch {
-			return 0;
-		}
-	}
-
-	function daysBetween(start: string, end: string | null): string {
-		if (!end) return '—';
-		try {
-			const diff = Math.floor(
-				(new Date(end).getTime() - new Date(start).getTime()) /
-					(1000 * 60 * 60 * 24),
-			);
-			return `${Math.max(0, diff)}d`;
-		} catch {
-			return '—';
-		}
-	}
-
-	function rowBorderClass(days: number) {
-		if (days >= 15) return 'border-l-4 border-[var(--color-danger)]';
-		if (days >= 8) return 'border-l-4 border-amber-400';
-		return '';
-	}
-
-	function daysTextClass(days: number) {
-		if (days >= 15) return 'text-[var(--color-danger)] font-bold';
-		if (days >= 8) return 'text-amber-600 font-semibold';
-		return 'text-[var(--color-text)]';
-	}
-
-	const resolvedStatusLabel: Record<string, string> = {
-		available: 'Available',
-		allotted: 'Allotted',
-		retired: 'Retired',
-	};
 
 	return (
 		<motion.div
@@ -138,12 +114,14 @@ export function RepairPage() {
 							{loadingActive && <TableSkeleton rows={5} cols={9} />}
 							{!loadingActive &&
 								(openRepairs ?? []).map((repair) => {
-									const days = daysFromSent(repair.date_sent);
+									const duration = getRepairDuration(repair.date_sent, repair.expected_return_date);
+									const isOverdue = !!repair.expected_return_date && new Date() > new Date(repair.expected_return_date);
+									const isDueSoon = !!repair.expected_return_date && !isOverdue && getRepairDuration(new Date().toISOString(), repair.expected_return_date) <= 2;
 									return (
 										<Tr
 											key={repair.id}
 											onClick={() => setViewRepair(repair)}
-											className={rowBorderClass(days)}
+											className={isOverdue ? 'border-l-4 border-[var(--color-danger)]' : isDueSoon ? 'border-l-4 border-amber-400' : ''}
 										>
 											<Td>
 												<span className='font-mono font-semibold text-[var(--color-primary)]'>
@@ -173,7 +151,9 @@ export function RepairPage() {
 											<Td>{formatDate(repair.date_sent)}</Td>
 											<Td>{formatDate(repair.expected_return_date)}</Td>
 											<Td>
-												<span className={daysTextClass(days)}>{days}d</span>
+												<span className={isOverdue ? 'text-red-600 font-semibold' : isDueSoon ? 'text-amber-600 font-semibold' : 'text-gray-700'}>
+													{duration}d{isOverdue && ' ⚠️'}
+												</span>
 											</Td>
 											<Td
 												onClick={(e: React.MouseEvent) => e.stopPropagation()}
@@ -245,8 +225,8 @@ export function RepairPage() {
 						<TableBody>
 							{loadingHistory && <TableSkeleton rows={5} cols={9} />}
 							{!loadingHistory &&
-								(history ?? []).map((repair) => (
-									<Tr key={repair.id}>
+								(history ?? []).map((repair) => {
+									return (<Tr key={repair.id}>
 										<Td>
 											<span className='font-mono font-semibold text-[var(--color-primary)]'>
 												{repair.asset?.asset_tag ?? '—'}
@@ -267,7 +247,7 @@ export function RepairPage() {
 										<Td>{formatDate(repair.date_sent)}</Td>
 										<Td>{formatDate(repair.actual_return_date)}</Td>
 										<Td>
-											{daysBetween(repair.date_sent, repair.actual_return_date)}
+											{getRepairDuration(repair.date_sent, repair.actual_return_date)}d
 										</Td>
 										<Td>{formatPKR(repair.final_cost_pkr)}</Td>
 										<Td>
@@ -290,9 +270,9 @@ export function RepairPage() {
 												'—'
 											)}
 										</Td>
-										<Td>{repair.asset?.allotted_user?.name ?? '—'}</Td>
+										<Td>{repair.original_user?.name ?? '—'}</Td>
 									</Tr>
-								))}
+								); })}
 						</TableBody>
 					</Table>
 

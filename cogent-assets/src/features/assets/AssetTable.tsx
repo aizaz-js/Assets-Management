@@ -46,10 +46,22 @@ export function AssetTable({
     classification,
     asset_type: assetType,
     status: statusFilter !== 'all' ? (statusFilter as AssetStatus) : undefined,
-    search: searchQuery || undefined,
   })
 
-  const assets = [...(rawData ?? [])].sort((a, b) => a.asset_tag.localeCompare(b.asset_tag))
+  const searchLower = searchQuery.toLowerCase()
+  const assets = [...(rawData ?? [])]
+    .filter((a) => {
+      if (!searchQuery) return true
+      return (
+        a.asset_tag.toLowerCase().includes(searchLower) ||
+        (a.specs ?? '').toLowerCase().includes(searchLower) ||
+        (a.serial_number ?? '').toLowerCase().includes(searchLower) ||
+        (a.allotted_user?.name ?? '').toLowerCase().includes(searchLower) ||
+        (a.allotted_user?.email ?? '').toLowerCase().includes(searchLower) ||
+        (a.location ?? '').toLowerCase().includes(searchLower)
+      )
+    })
+    .sort((a, b) => a.asset_tag.localeCompare(b.asset_tag))
   const total = assets.length
 
   return (

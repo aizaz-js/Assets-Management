@@ -58,7 +58,18 @@ export function UserDetailDrawer({ profile, open, onClose }: UserDetailDrawerPro
   async function handleDelete() {
     setDeleting(true)
     try {
-      // Unlink any assets first
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: currentProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user?.id ?? '')
+        .single()
+
+      if (currentProfile?.role !== 'admin') {
+        toast.error('Only admins can delete employees')
+        return
+      }
+
       await supabase
         .from('assets')
         .update({ allotted_user_id: null, status: 'available' })
@@ -66,12 +77,20 @@ export function UserDetailDrawer({ profile, open, onClose }: UserDetailDrawerPro
         .neq('status', 'retired')
 
       const { error } = await supabase.from('profiles').delete().eq('id', profile!.id)
-      if (error) throw error
+      if (error) {
+        console.error('Delete error:', error)
+        if (error.code === '42501' || error.message.includes('403')) {
+          toast.error('Permission denied. Please sign out and sign back in.')
+        } else {
+          toast.error('Failed to delete: ' + error.message)
+        }
+        return
+      }
 
       qc.removeQueries({ queryKey: ['users'] })
+      qc.removeQueries({ queryKey: ['user-assets', profile!.id] })
       qc.invalidateQueries({ queryKey: ['users'] })
       qc.invalidateQueries({ queryKey: ['assets'] })
-      qc.removeQueries({ queryKey: ['user-assets', profile!.id] })
 
       toast.success(`${profile!.name} has been removed`)
       if (!profile!.manually_created) {
@@ -81,7 +100,9 @@ export function UserDetailDrawer({ profile, open, onClose }: UserDetailDrawerPro
       setDeleteOpen(false)
       onClose()
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete user')
+      if (err instanceof Error && err.message !== 'PERMISSION_DENIED') {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete user')
+      }
     } finally {
       setDeleting(false)
     }
@@ -99,9 +120,6 @@ export function UserDetailDrawer({ profile, open, onClose }: UserDetailDrawerPro
               <p className="text-sm text-[var(--color-text-secondary)]">{profile.email}</p>
               {profile.designation && (
                 <p className="text-sm text-[var(--color-text-secondary)]">{profile.designation}</p>
-              )}
-              {profile.department && (
-                <p className="text-xs text-[var(--color-text-secondary)]">{profile.department}</p>
               )}
               <div className="flex items-center gap-2 mt-2">
                 <Badge variant={roleBadgeVariant[profile.role]}>{profile.role}</Badge>

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import type { Profile, AuditAction } from '@/types'
 
@@ -48,7 +49,8 @@ export function useUsers(filter: UserFilter = {}) {
 
       return (profiles ?? []).map((p) => ({ ...p, asset_count: countMap[p.id] ?? 0 }))
     },
-    staleTime: 30 * 1000,
+    staleTime: 0,
+    gcTime: 0,
   })
 }
 
@@ -76,13 +78,9 @@ export function useCreateUser() {
       email: string
       role: Profile['role']
       designation?: string | null
-      department?: string | null
-      engagement_type?: Profile['engagement_type']
-      engagement_end_date?: string | null
     }) => {
       const { error } = await supabase.from('profiles').insert({
         ...values,
-        engagement_type: values.engagement_type ?? 'permanent',
         status: 'active',
         avatar_url: null,
       })
@@ -96,10 +94,41 @@ export function useDeleteUser() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (id: string) => {
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: currentProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user?.id ?? '')
+        .single()
+
+      if (currentProfile?.role !== 'admin') {
+        toast.error('Only admins can delete employees')
+        throw new Error('PERMISSION_DENIED')
+      }
+
+      await supabase
+        .from('assets')
+        .update({ allotted_user_id: null, status: 'available' })
+        .eq('allotted_user_id', id)
+        .neq('status', 'retired')
+
       const { error } = await supabase.from('profiles').delete().eq('id', id)
-      if (error) throw error
+      if (error) {
+        console.error('Delete error:', error)
+        if (error.code === '42501' || error.message.includes('403')) {
+          toast.error('Permission denied. Please sign out and sign back in.')
+        } else {
+          toast.error('Failed to delete: ' + error.message)
+        }
+        throw error
+      }
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: (_data, id) => {
+      qc.removeQueries({ queryKey: ['users'] })
+      qc.removeQueries({ queryKey: ['user-assets', id] })
+      qc.invalidateQueries({ queryKey: ['users'] })
+      qc.invalidateQueries({ queryKey: ['assets'] })
+    },
   })
 }
 
@@ -128,11 +157,8 @@ export function useUpdateUser() {
       id: string
       values: {
         name: string
-        role: Profile['role']
+        role: 'admin' | 'employee'
         designation?: string | null
-        department?: string | null
-        engagement_type: Profile['engagement_type']
-        engagement_end_date?: string | null
         status: 'active' | 'inactive'
       }
     }) => {
