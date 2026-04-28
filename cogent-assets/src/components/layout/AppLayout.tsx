@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Menu, X, Package, Wrench, Users, BarChart2, Settings, LogOut } from 'lucide-react'
 import { Sidebar } from './Sidebar'
-import { TopBar } from './TopBar'
 import { Avatar } from '@/components/ui/Avatar'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { useAuth } from '@/features/auth/useAuth'
@@ -39,26 +38,20 @@ export function AppLayout() {
     return (
       <div className="min-h-screen bg-[var(--color-bg)]">
         {/* Mobile top bar */}
-        <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-[var(--color-border)] z-30 flex items-center px-4 gap-3">
+        <header className="fixed top-0 left-0 right-0 h-14 bg-[var(--color-sidebar)] z-30 flex items-center justify-between px-4 flex-shrink-0">
+          <img
+            src="/cogent-logo.png"
+            alt="Cogent"
+            className="h-6 w-auto"
+            style={{ filter: 'brightness(0) invert(1)' }}
+          />
           <button
             onClick={() => setMobileMenuOpen(true)}
-            className="p-2 rounded hover:bg-[var(--color-bg)] transition-colors"
+            className="text-white p-2"
             aria-label="Open menu"
           >
-            <Menu className="w-5 h-5 text-[var(--color-text)]" />
+            <Menu className="w-6 h-6" />
           </button>
-          <div className="flex-1 flex items-center justify-center gap-2">
-            <img
-              src="/cogent-logo.png"
-              alt="Cogent"
-              className="h-7 w-auto"
-              style={{ filter: 'brightness(0) saturate(100%) invert(26%) sepia(52%) saturate(651%) hue-rotate(172deg) brightness(89%) contrast(96%)' }}
-            />
-            <span className="text-base font-bold text-[var(--color-primary)] tracking-wide">ASSETS</span>
-          </div>
-          {profile && (
-            <Avatar src={profile.avatar_url} name={profile.name} size="sm" />
-          )}
         </header>
 
         {/* Overlay drawer */}
@@ -152,7 +145,7 @@ export function AppLayout() {
         </AnimatePresence>
 
         {/* Main content */}
-        <main className="min-h-screen pt-16">
+        <main className="min-h-screen pt-14">
           <div className="p-4 overflow-x-hidden">
             <AnimatePresence mode="wait">
               <motion.div
@@ -175,9 +168,8 @@ export function AppLayout() {
   return (
     <div className="min-h-screen bg-bg">
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
-      <TopBar sidebarWidth={sidebarWidth} />
       <main
-        className="min-h-screen pt-16 transition-all duration-200"
+        className="min-h-screen transition-all duration-200"
         style={{ marginLeft: sidebarWidth }}
       >
         <div className="p-6">
