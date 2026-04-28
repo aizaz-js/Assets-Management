@@ -38,6 +38,19 @@ function getRepairDuration(
 	));
 }
 
+function getDaysTaken(
+	dateSent: string | null | undefined,
+	returnDate: string | null | undefined,
+): number {
+	if (!dateSent || !returnDate) return 0;
+	const sent = new Date(dateSent);
+	const returned = new Date(returnDate);
+	if (isNaN(sent.getTime()) || isNaN(returned.getTime())) return 0;
+	return Math.max(0, Math.floor(
+		(returned.getTime() - sent.getTime()) / (1000 * 60 * 60 * 24),
+	));
+}
+
 
 
 const resolvedStatusLabel: Record<string, string> = {
@@ -247,7 +260,7 @@ export function RepairPage() {
 										<Td>{formatDate(repair.date_sent)}</Td>
 										<Td>{formatDate(repair.actual_return_date)}</Td>
 										<Td>
-											{getRepairDuration(repair.date_sent, repair.actual_return_date)}d
+											{getDaysTaken(repair.date_sent, repair.actual_return_date)}d
 										</Td>
 										<Td>{formatPKR(repair.final_cost_pkr)}</Td>
 										<Td>
