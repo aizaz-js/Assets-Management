@@ -46,7 +46,10 @@ export function UsersPage() {
       toast.success(`${deleteTarget.name} removed`)
       setDeleteTarget(null)
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete user')
+      // Hook already toasted for PERMISSION_DENIED and 403 — only show generic for others
+      if (err instanceof Error && err.message !== 'PERMISSION_DENIED') {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete user')
+      }
     }
   }
 
@@ -99,7 +102,6 @@ export function UsersPage() {
             <tr>
               <Th>User</Th>
               <Th>Designation</Th>
-              <Th>Department</Th>
               <Th>Assets</Th>
               <Th>Role</Th>
               <Th>Status</Th>
@@ -107,7 +109,7 @@ export function UsersPage() {
             </tr>
           </TableHead>
           <TableBody>
-            {isLoading && <TableSkeleton rows={6} cols={7} />}
+            {isLoading && <TableSkeleton rows={6} cols={6} />}
             {!isLoading && (users ?? []).map((user) => (
               <Tr key={user.id} onClick={() => setSelectedProfile(user)}>
                 <Td>
@@ -120,7 +122,6 @@ export function UsersPage() {
                   </div>
                 </Td>
                 <Td>{user.designation ?? '—'}</Td>
-                <Td>{user.department ?? '—'}</Td>
                 <Td>
                   <span className={cn(
                     'text-sm font-semibold',

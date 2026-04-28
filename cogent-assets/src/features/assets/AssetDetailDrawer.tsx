@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { Clock } from 'lucide-react'
 import { Drawer } from '@/components/ui/Drawer'
 import { AssetStatusBadge } from '@/components/shared/AssetStatusBadge'
 import { Avatar } from '@/components/ui/Avatar'
@@ -9,6 +11,7 @@ import { ASSET_TYPE_LABELS } from '@/lib/constants'
 import { formatDate, formatPKR } from '@/lib/utils'
 import type { Asset } from '@/types'
 import { Button } from '@/components/ui/Button'
+import { AssetHistoryModal } from './AssetHistoryModal'
 
 interface AssetDetailDrawerProps {
   assetId: string | null
@@ -18,6 +21,7 @@ interface AssetDetailDrawerProps {
 }
 
 export function AssetDetailDrawer({ assetId, open, onClose, onEdit }: AssetDetailDrawerProps) {
+  const [historyOpen, setHistoryOpen] = useState(false)
   const { data: asset, isLoading } = useAsset(assetId)
   const { data: auditLog } = useAssetAuditLog(assetId)
   const { data: repairs } = useRepairs({})
@@ -25,6 +29,7 @@ export function AssetDetailDrawer({ assetId, open, onClose, onEdit }: AssetDetai
   const assetRepairs = repairs?.filter((r) => r.asset_id === assetId) ?? []
 
   return (
+    <>
     <Drawer open={open} onClose={onClose} title="Asset Details" width={480}>
       {isLoading && (
         <div className="flex items-center justify-center py-16">
@@ -34,10 +39,17 @@ export function AssetDetailDrawer({ assetId, open, onClose, onEdit }: AssetDetai
       {asset && (
         <div className="px-6 py-4 space-y-6">
           {/* Actions */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap items-center">
             <Button variant="secondary" size="sm" onClick={() => onEdit(asset)}>
               Edit Asset
             </Button>
+            <button
+              onClick={() => setHistoryOpen(true)}
+              className="flex items-center gap-1.5 text-sm text-[var(--color-primary)] hover:underline"
+            >
+              <Clock className="w-4 h-4" />
+              View Asset History
+            </button>
           </div>
 
           {/* Asset Info */}
@@ -51,7 +63,7 @@ export function AssetDetailDrawer({ assetId, open, onClose, onEdit }: AssetDetai
                 <Badge variant={asset.classification}>{asset.classification === 'employee_allocated' ? 'Employee Allocated' : 'Company Allocated'}</Badge>
               } />
               <Row label="Specs" value={asset.specs} />
-              {asset.serial_number && <Row label="Serial No." value={<span className="font-mono">{asset.serial_number}</span>} />}
+              {asset.serial_number && asset.classification !== 'company_allocated' && <Row label="Serial No." value={<span className="font-mono">{asset.serial_number}</span>} />}
               {asset.asset_type === 'mobile' && asset.pta_status && <Row label="PTA Status" value={asset.pta_status.replace('_', ' ')} />}
             </div>
           </section>
@@ -137,6 +149,14 @@ export function AssetDetailDrawer({ assetId, open, onClose, onEdit }: AssetDetai
         </div>
       )}
     </Drawer>
+    {historyOpen && asset && (
+      <AssetHistoryModal
+        assetId={asset.id}
+        assetTag={asset.asset_tag}
+        onClose={() => setHistoryOpen(false)}
+      />
+    )}
+    </>
   )
 }
 

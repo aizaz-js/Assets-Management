@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import toast from 'react-hot-toast'
-import { Building2, User } from 'lucide-react'
+import { Building2, User, ChevronDown } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -12,6 +12,7 @@ import { UserSelectDropdown } from '@/components/ui/UserSelectDropdown'
 import { assetSchema, type AssetFormValues } from '@/lib/validations'
 import { useCreateAsset } from '@/hooks/useAssets'
 import { useUsers } from '@/hooks/useUsers'
+import { useCategories } from '@/hooks/useCategories'
 import { supabase } from '@/lib/supabase'
 import {
   ASSET_TYPE_LABELS, EMPLOYEE_ASSET_TYPES, COMPANY_ASSET_TYPES,
@@ -20,25 +21,23 @@ import {
 import type { Classification, AssetType } from '@/types'
 import { cn } from '@/lib/utils'
 
-const TAG_PREFIXES: Record<string, string> = {
-  laptop: 'LT-',
-  mobile: 'MP-',
-  monitor: 'CLED-',
-  mouse: 'MSE-',
-  keyboard: 'KB-',
-  webcam: 'WC-',
-  hub: 'HUB-',
-  bag: 'BAG-',
-  hdd: 'HDD-',
-  chair: 'CHR-',
-  desk: 'DSK-',
-  projector: 'PRJ-',
-  speaker: 'SPK-',
-  camera: 'CAM-',
-  ups: 'UPS-',
-  whiteboard: 'WB-',
-  other: '',
-}
+const OFFICE_LOCATIONS = [
+  "Ehmad's Office (Floor 2)",
+  "Git Orbit (Floor 2)",
+  "Podcast Room (Floor 2)",
+  "Django's Den (Floor B)",
+  "Sher's Office (Floor B)",
+  "Ahmed's Office (Floor G)",
+  "Python Penthouse (Floor 2)",
+  "Docker's Deck (Floor G)",
+  "Guest Room (Floor G)",
+  "Ground Floor Hall",
+  "Basement Hall",
+  "First Floor Hall",
+  "Second Floor Hall",
+  "Third Floor Hall",
+  "Rooftop",
+]
 
 interface AddAssetModalProps {
   open: boolean
@@ -50,10 +49,15 @@ interface AddAssetModalProps {
 export function AddAssetModal({ open, onClose, defaultClassification, defaultType }: AddAssetModalProps) {
   const [step, setStep] = useState<1 | 2>(defaultClassification ? 2 : 1)
   const [classification, setClassification] = useState<Classification | null>(defaultClassification ?? null)
-  const [laptopConflict, setLaptopConflict] = useState<string | null>(null)
   const [tagError, setTagError] = useState<string | null>(null)
   const [serialError, setSerialError] = useState<string | null>(null)
+  const [tagNumber, setTagNumber] = useState('')
+  const [locationOpen, setLocationOpen] = useState(false)
+  const [locationSearch, setLocationSearch] = useState('')
+  const locationRef = useRef<HTMLDivElement>(null)
+
   const { data: users } = useUsers({ status: 'active' })
+  const { data: allCategories } = useCategories()
   const createAsset = useCreateAsset()
 
   const {
@@ -84,20 +88,49 @@ export function AddAssetModal({ open, onClose, defaultClassification, defaultTyp
   const assetType = watch('asset_type')
   const selectedStatus = watch('status')
   const allottedUserId = watch('allotted_user_id')
-  const assetTag = watch('asset_tag')
   const serialNumber = watch('serial_number')
+  const location = watch('location')
 
-  useEffect(() => { setTagError(null) }, [assetTag])
   useEffect(() => { setSerialError(null) }, [serialNumber])
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (locationRef.current && !locationRef.current.contains(e.target as Node)) {
+        setLocationOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Derive tag prefix from DB categories (fallback to empty string)
+  const tagPrefix = useMemo(() => {
+    const cat = (allCategories ?? []).find((c) => c.type_key === assetType)
+    return cat?.tag_prefix ?? ''
+  }, [allCategories, assetType])
+
+  // Keep asset_tag form field in sync with the split input
+  useEffect(() => {
+    const full = tagPrefix ? `${tagPrefix}-${tagNumber}` : tagNumber
+    setValue('asset_tag', full)
+  }, [tagNumber, tagPrefix, setValue])
+
+  // Reset number part when asset type changes
+  useEffect(() => {
+    setTagNumber('')
+    setTagError(null)
+  }, [assetType])
 
   useEffect(() => {
     if (open) {
       const cls = defaultClassification ?? null
       setClassification(cls)
       setStep(cls ? 2 : 1)
-      setLaptopConflict(null)
       setTagError(null)
       setSerialError(null)
+      setTagNumber('')
+      setLocationOpen(false)
+      setLocationSearch('')
       const types = cls === 'employee_allocated' ? EMPLOYEE_ASSET_TYPES : COMPANY_ASSET_TYPES
       const initialType = (defaultType ?? types[0]) as AssetType
       reset({
@@ -116,23 +149,6 @@ export function AddAssetModal({ open, onClose, defaultClassification, defaultTyp
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (assetType !== 'laptop' || !allottedUserId) {
-      setLaptopConflict(null)
-      return
-    }
-    supabase
-      .from('assets')
-      .select('asset_tag')
-      .eq('asset_type', 'laptop')
-      .eq('allotted_user_id', allottedUserId)
-      .eq('status', 'allotted')
-      .limit(1)
-      .then(({ data }) => {
-        setLaptopConflict(data && data.length > 0 ? data[0].asset_tag : null)
-      })
-  }, [allottedUserId, assetType])
-
   function handleClassificationSelect(c: Classification) {
     setClassification(c)
     setValue('classification', c)
@@ -144,13 +160,15 @@ export function AddAssetModal({ open, onClose, defaultClassification, defaultTyp
   const availableTypes = classification === 'employee_allocated' ? EMPLOYEE_ASSET_TYPES : COMPANY_ASSET_TYPES
   const typeOptions = availableTypes.map((t: string) => ({ value: t, label: ASSET_TYPE_LABELS[t] }))
 
-  async function onSubmit(values: AssetFormValues) {
-    if (laptopConflict) return
+  const filteredLocations = OFFICE_LOCATIONS.filter((l) =>
+    l.toLowerCase().includes(locationSearch.toLowerCase())
+  )
 
-    // Prefix validation
-    const prefix = TAG_PREFIXES[values.asset_type] ?? ''
-    if (prefix && !values.asset_tag.startsWith(prefix)) {
-      setTagError(`Tag for ${values.asset_type} must start with ${prefix} (e.g. ${prefix}0001)`)
+  const isCompany = classification === 'company_allocated'
+
+  async function onSubmit(values: AssetFormValues) {
+    if (!tagNumber.trim()) {
+      setTagError('Tag number is required')
       return
     }
 
@@ -184,7 +202,7 @@ export function AddAssetModal({ open, onClose, defaultClassification, defaultTyp
     try {
       await createAsset.mutateAsync({
         ...values,
-        serial_number: cleanedSerial,
+        serial_number: isCompany ? null : cleanedSerial,
         purchase_date: values.purchase_date || null,
         created_by: '',
       } as Parameters<typeof createAsset.mutateAsync>[0])
@@ -197,11 +215,13 @@ export function AddAssetModal({ open, onClose, defaultClassification, defaultTyp
 
   function handleClose() {
     reset()
+    setTagNumber('')
     setStep(defaultClassification ? 2 : 1)
     setClassification(defaultClassification ?? null)
-    setLaptopConflict(null)
     setTagError(null)
     setSerialError(null)
+    setLocationOpen(false)
+    setLocationSearch('')
     onClose()
   }
 
@@ -222,7 +242,6 @@ export function AddAssetModal({ open, onClose, defaultClassification, defaultTyp
               variant="primary"
               onClick={handleSubmit(onSubmit)}
               loading={createAsset.isPending}
-              disabled={!!laptopConflict}
             >
               Add Asset
             </Button>
@@ -259,17 +278,34 @@ export function AddAssetModal({ open, onClose, defaultClassification, defaultTyp
       {step === 2 && (
         <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
           <div className="grid grid-cols-2 gap-4">
+            {/* Split tag input */}
             <div>
-              <Input
-                label="Asset Tag *"
-                placeholder="e.g. LT-0081"
-                {...register('asset_tag')}
-                error={errors.asset_tag?.message}
-              />
+              <label className="text-xs font-medium text-[var(--color-text-secondary)] mb-1.5 block">
+                Asset Tag *
+              </label>
+              <div className={cn(
+                'flex rounded-lg border overflow-hidden transition-colors',
+                tagError ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)] focus-within:border-[var(--color-primary)]'
+              )}>
+                <span className="px-3 py-2 bg-gray-100 text-gray-500 font-mono text-sm border-r select-none flex items-center whitespace-nowrap">
+                  {tagPrefix ? `${tagPrefix}-` : 'TAG-'}
+                </span>
+                <input
+                  type="text"
+                  value={tagNumber}
+                  onChange={(e) => {
+                    setTagNumber(e.target.value.replace(/[^0-9A-Za-z]/g, '').toUpperCase())
+                    setTagError(null)
+                  }}
+                  placeholder="0081"
+                  className="flex-1 px-3 py-2 text-sm font-mono focus:outline-none min-w-0 bg-white"
+                />
+              </div>
               {tagError && (
                 <p className="mt-1 text-xs text-[var(--color-danger)] font-medium">{tagError}</p>
               )}
             </div>
+
             {defaultType ? (
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-[var(--color-text-secondary)]">Asset Type</label>
@@ -295,7 +331,7 @@ export function AddAssetModal({ open, onClose, defaultClassification, defaultTyp
           </div>
 
           <Input
-            label="Manufacturer *"
+            label={isCompany ? 'Manufacturer' : 'Manufacturer *'}
             placeholder="e.g. Apple, Dell, HP, Lenovo, Samsung"
             {...register('manufacturer')}
             error={errors.manufacturer?.message}
@@ -329,13 +365,14 @@ export function AddAssetModal({ open, onClose, defaultClassification, defaultTyp
           />
 
           <Textarea
-            label="Specs / Description *"
+            label={isCompany ? 'Specs / Description' : 'Specs / Description *'}
             rows={3}
             {...register('specs')}
             error={errors.specs?.message}
           />
 
-          {!['mouse', 'keyboard', 'bag', 'other'].includes(assetType) && (
+          {/* Serial number: employee assets only, and not for accessory types */}
+          {!isCompany && !['mouse', 'keyboard', 'bag', 'other'].includes(assetType) && (
             <div>
               <Input
                 label={assetType === 'mobile' ? 'IMEI Number' : 'Serial Number'}
@@ -375,37 +412,79 @@ export function AddAssetModal({ open, onClose, defaultClassification, defaultTyp
                 value={field.value}
                 onValueChange={(v) => {
                   field.onChange(v)
-                  if (v !== 'allotted') setValue('allotted_user_id', null)
+                  if (v !== 'allotted') {
+                    setValue('allotted_user_id', null)
+                    setValue('location', null)
+                  }
                 }}
                 error={errors.status?.message}
               />
             )}
           />
 
-          {selectedStatus === 'allotted' && classification === 'employee_allocated' && (
-            <>
-              <UserSelectDropdown
-                label="Allotted To *"
-                profiles={users ?? []}
-                value={allottedUserId ?? ''}
-                onSelect={(uid) => setValue('allotted_user_id', uid || null)}
-                error={errors.allotted_user_id?.message}
-              />
-              {laptopConflict && (
-                <p className="text-xs text-[var(--color-danger)] font-medium">
-                  This employee already has a laptop assigned ({laptopConflict}). Return that laptop before assigning a new one.
-                </p>
-              )}
-            </>
+          {selectedStatus === 'allotted' && !isCompany && (
+            <UserSelectDropdown
+              label="Allotted To *"
+              profiles={users ?? []}
+              value={allottedUserId ?? ''}
+              onSelect={(uid) => setValue('allotted_user_id', uid || null)}
+              error={errors.allotted_user_id?.message}
+            />
           )}
 
-          {classification === 'company_allocated' && (
-            <Input
-              label="Location *"
-              {...register('location')}
-              error={errors.location?.message}
-              placeholder="e.g. Office Floor 2, Meeting Room A"
-            />
+          {/* Location dropdown: company assets only, when allotted */}
+          {selectedStatus === 'allotted' && isCompany && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-[var(--color-text-secondary)]">Location *</label>
+              <div ref={locationRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setLocationOpen((v) => !v)}
+                  className="w-full border border-[var(--color-border)] rounded-lg px-3 py-2 text-left text-sm flex justify-between items-center bg-white hover:border-[var(--color-primary)] transition-colors"
+                >
+                  <span className={location ? 'text-[var(--color-text)]' : 'text-[var(--color-text-secondary)]'}>
+                    {location || 'Select office location...'}
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                </button>
+                {locationOpen && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-[var(--color-border)] rounded-lg shadow-lg">
+                    <div className="p-2 border-b border-[var(--color-border)]">
+                      <input
+                        autoFocus
+                        type="text"
+                        placeholder="Search location..."
+                        value={locationSearch}
+                        onChange={(e) => setLocationSearch(e.target.value)}
+                        className="w-full text-sm px-2 py-1.5 border border-[var(--color-border)] rounded focus:outline-none focus:border-[var(--color-primary)]"
+                      />
+                    </div>
+                    <div className="max-h-52 overflow-y-auto">
+                      {filteredLocations.length === 0 && (
+                        <div className="px-3 py-2 text-sm text-[var(--color-text-secondary)]">No locations found</div>
+                      )}
+                      {filteredLocations.map((loc) => (
+                        <button
+                          key={loc}
+                          type="button"
+                          onClick={() => {
+                            setValue('location', loc)
+                            setLocationOpen(false)
+                            setLocationSearch('')
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-[var(--color-border)] last:border-0 ${loc === location ? 'bg-blue-50' : ''}`}
+                        >
+                          {loc}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {errors.location && (
+                <p className="text-xs text-[var(--color-danger)]">{errors.location.message}</p>
+              )}
+            </div>
           )}
         </form>
       )}

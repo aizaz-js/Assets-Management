@@ -4,18 +4,14 @@ export const assetSchema = z
   .object({
     asset_tag: z.string().min(1, 'Asset tag is required'),
     classification: z.enum(['company_allocated', 'employee_allocated']),
-    asset_type: z.enum([
-      'laptop', 'mobile', 'monitor', 'mouse', 'keyboard', 'webcam',
-      'hub', 'bag', 'chair', 'desk', 'projector', 'speaker', 'camera',
-      'ups', 'whiteboard', 'hdd', 'other',
-    ]),
-    manufacturer: z.string().min(1, 'Manufacturer is required'),
+    asset_type: z.string().min(1, 'Asset type is required'),
+    manufacturer: z.string().optional(),
     price_pkr: z.number().min(0, 'Price must be ≥ 0'),
     vendor_name: z.string(),
     vendor_phone: z.string(),
     invoice_number: z.string(),
     purchase_date: z.string().nullable().optional(),
-    specs: z.string().min(1, 'Specs/description is required'),
+    specs: z.string().optional(),
     serial_number: z.string().nullable().optional(),
     pta_status: z.enum(['pta_approved', 'non_pta', 'unknown']).nullable().optional(),
     allotted_user_id: z.string().uuid().nullable().optional(),
@@ -24,6 +20,12 @@ export const assetSchema = z
     retirement_reason: z.enum(['end_of_life', 'beyond_repair', 'replaced', 'stolen', 'lost']).nullable().optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.classification === 'employee_allocated' && !data.manufacturer) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Manufacturer is required', path: ['manufacturer'] })
+    }
+    if (data.classification === 'employee_allocated' && !data.specs) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Specs/description is required', path: ['specs'] })
+    }
     if (data.asset_type === 'mobile' && !data.pta_status) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'PTA Status is required for mobile assets', path: ['pta_status'] })
     }
@@ -33,8 +35,8 @@ export const assetSchema = z
     if (data.status === 'retired' && !data.retirement_reason) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Retirement reason is required when retiring an asset', path: ['retirement_reason'] })
     }
-    if (data.classification === 'company_allocated' && !data.location) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Location is required for company allocated assets', path: ['location'] })
+    if (data.classification === 'company_allocated' && data.status === 'allotted' && !data.location) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Location is required when status is allotted', path: ['location'] })
     }
   })
 

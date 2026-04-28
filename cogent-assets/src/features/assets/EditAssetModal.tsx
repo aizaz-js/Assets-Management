@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import toast from 'react-hot-toast'
+import { ChevronDown } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -16,27 +17,25 @@ import {
   ASSET_TYPE_LABELS, EMPLOYEE_ASSET_TYPES, COMPANY_ASSET_TYPES,
   PTA_STATUS_OPTIONS, STATUS_OPTIONS, RETIREMENT_REASON_OPTIONS,
 } from '@/lib/constants'
-import type { Asset } from '@/types'
+import type { Asset, AssetType } from '@/types'
 
-const TAG_PREFIXES: Record<string, string> = {
-  laptop: 'LT-',
-  mobile: 'MP-',
-  monitor: 'CLED-',
-  mouse: 'MSE-',
-  keyboard: 'KB-',
-  webcam: 'WC-',
-  hub: 'HUB-',
-  bag: 'BAG-',
-  hdd: 'HDD-',
-  chair: 'CHR-',
-  desk: 'DSK-',
-  projector: 'PRJ-',
-  speaker: 'SPK-',
-  camera: 'CAM-',
-  ups: 'UPS-',
-  whiteboard: 'WB-',
-  other: '',
-}
+const OFFICE_LOCATIONS = [
+  "Ehmad's Office (Floor 2)",
+  "Git Orbit (Floor 2)",
+  "Podcast Room (Floor 2)",
+  "Django's Den (Floor B)",
+  "Sher's Office (Floor B)",
+  "Ahmed's Office (Floor G)",
+  "Python Penthouse (Floor 2)",
+  "Docker's Deck (Floor G)",
+  "Guest Room (Floor G)",
+  "Ground Floor Hall",
+  "Basement Hall",
+  "First Floor Hall",
+  "Second Floor Hall",
+  "Third Floor Hall",
+  "Rooftop",
+]
 
 interface EditAssetModalProps {
   open: boolean
@@ -47,9 +46,13 @@ interface EditAssetModalProps {
 export function EditAssetModal({ open, onClose, asset }: EditAssetModalProps) {
   const updateAsset = useUpdateAsset()
   const { data: users } = useUsers({ status: 'active' })
-  const [laptopConflict, setLaptopConflict] = useState<string | null>(null)
   const [tagError, setTagError] = useState<string | null>(null)
   const [serialError, setSerialError] = useState<string | null>(null)
+  const [locationOpen, setLocationOpen] = useState(false)
+  const [locationSearch, setLocationSearch] = useState('')
+  const locationRef = useRef<HTMLDivElement>(null)
+
+  const isCompany = asset.classification === 'company_allocated'
 
   const {
     register,
@@ -101,53 +104,42 @@ export function EditAssetModal({ open, onClose, asset }: EditAssetModalProps) {
         status: asset.status,
         retirement_reason: asset.retirement_reason ?? undefined,
       })
-      setLaptopConflict(null)
       setTagError(null)
       setSerialError(null)
+      setLocationOpen(false)
+      setLocationSearch('')
     }
   }, [open, asset, reset])
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (locationRef.current && !locationRef.current.contains(e.target as Node)) {
+        setLocationOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const assetType = watch('asset_type')
   const selectedStatus = watch('status')
   const allottedUserId = watch('allotted_user_id')
   const assetTag = watch('asset_tag')
   const serialNumber = watch('serial_number')
+  const location = watch('location')
 
   useEffect(() => { setTagError(null) }, [assetTag])
   useEffect(() => { setSerialError(null) }, [serialNumber])
-
-  useEffect(() => {
-    if (assetType !== 'laptop' || !allottedUserId) {
-      setLaptopConflict(null)
-      return
-    }
-    supabase
-      .from('assets')
-      .select('asset_tag')
-      .eq('asset_type', 'laptop')
-      .eq('allotted_user_id', allottedUserId)
-      .eq('status', 'allotted')
-      .neq('id', asset.id)
-      .limit(1)
-      .then(({ data }) => {
-        setLaptopConflict(data && data.length > 0 ? data[0].asset_tag : null)
-      })
-  }, [allottedUserId, assetType, asset.id])
 
   const availableTypes =
     asset.classification === 'employee_allocated' ? EMPLOYEE_ASSET_TYPES : COMPANY_ASSET_TYPES
   const typeOptions = availableTypes.map((t: string) => ({ value: t, label: ASSET_TYPE_LABELS[t] }))
 
+  const filteredLocations = OFFICE_LOCATIONS.filter((l) =>
+    l.toLowerCase().includes(locationSearch.toLowerCase())
+  )
+
   async function onSubmit(values: AssetFormValues) {
-    if (laptopConflict) return
-
-    // Prefix validation
-    const prefix = TAG_PREFIXES[values.asset_type] ?? ''
-    if (prefix && !values.asset_tag.startsWith(prefix)) {
-      setTagError(`Tag for ${values.asset_type} must start with ${prefix} (e.g. ${prefix}0001)`)
-      return
-    }
-
     // Duplicate tag check (exclude current asset)
     const { data: tagExists } = await supabase
       .from('assets')
@@ -160,8 +152,8 @@ export function EditAssetModal({ open, onClose, asset }: EditAssetModalProps) {
       return
     }
 
-    // Duplicate serial number check (exclude current asset, only if provided)
-    const cleanedSerial = values.serial_number?.trim() || null
+    // Duplicate serial number check (only if provided and not company)
+    const cleanedSerial = isCompany ? null : (values.serial_number?.trim() || null)
     if (cleanedSerial) {
       const { data: snExists } = await supabase
         .from('assets')
@@ -183,6 +175,7 @@ export function EditAssetModal({ open, onClose, asset }: EditAssetModalProps) {
         before: asset,
         updates: {
           ...values,
+          asset_type: values.asset_type as AssetType,
           serial_number: cleanedSerial,
           purchase_date: values.purchase_date || null,
         },
@@ -207,7 +200,6 @@ export function EditAssetModal({ open, onClose, asset }: EditAssetModalProps) {
             variant="primary"
             onClick={handleSubmit(onSubmit)}
             loading={updateAsset.isPending}
-            disabled={!!laptopConflict}
           >
             Save Changes
           </Button>
@@ -243,7 +235,7 @@ export function EditAssetModal({ open, onClose, asset }: EditAssetModalProps) {
         </div>
 
         <Input
-          label="Manufacturer *"
+          label={isCompany ? 'Manufacturer' : 'Manufacturer *'}
           placeholder="e.g. Apple, Dell, HP, Lenovo, Samsung"
           {...register('manufacturer')}
           error={errors.manufacturer?.message}
@@ -261,9 +253,15 @@ export function EditAssetModal({ open, onClose, asset }: EditAssetModalProps) {
 
         <Input label="Purchase Date" type="date" {...register('purchase_date')} error={errors.purchase_date?.message} />
 
-        <Textarea label="Specs / Description *" rows={3} {...register('specs')} error={errors.specs?.message} />
+        <Textarea
+          label={isCompany ? 'Specs / Description' : 'Specs / Description *'}
+          rows={3}
+          {...register('specs')}
+          error={errors.specs?.message}
+        />
 
-        {!['mouse', 'keyboard', 'bag', 'other'].includes(assetType) && (
+        {/* Serial number: employee assets only, not for accessory types */}
+        {!isCompany && !['mouse', 'keyboard', 'bag', 'other'].includes(assetType) && (
           <div>
             <Input
               label={assetType === 'mobile' ? 'IMEI Number' : 'Serial Number'}
@@ -297,7 +295,10 @@ export function EditAssetModal({ open, onClose, asset }: EditAssetModalProps) {
               value={field.value}
               onValueChange={(v) => {
                 field.onChange(v)
-                if (v !== 'allotted') setValue('allotted_user_id', null)
+                if (v !== 'allotted') {
+                  setValue('allotted_user_id', null)
+                  setValue('location', null)
+                }
               }}
               error={errors.status?.message}
             />
@@ -314,25 +315,69 @@ export function EditAssetModal({ open, onClose, asset }: EditAssetModalProps) {
           />
         )}
 
-        {selectedStatus === 'allotted' && asset.classification === 'employee_allocated' && (
-          <>
-            <UserSelectDropdown
-              label="Allotted To *"
-              profiles={users ?? []}
-              value={allottedUserId ?? ''}
-              onSelect={(uid) => setValue('allotted_user_id', uid || null)}
-              error={errors.allotted_user_id?.message}
-            />
-            {laptopConflict && (
-              <p className="text-xs text-[var(--color-danger)] font-medium">
-                This employee already has a laptop assigned ({laptopConflict}). Return that laptop before assigning a new one.
-              </p>
-            )}
-          </>
+        {selectedStatus === 'allotted' && !isCompany && (
+          <UserSelectDropdown
+            label="Allotted To *"
+            profiles={users ?? []}
+            value={allottedUserId ?? ''}
+            onSelect={(uid) => setValue('allotted_user_id', uid || null)}
+            error={errors.allotted_user_id?.message}
+          />
         )}
 
-        {asset.classification === 'company_allocated' && (
-          <Input label="Location *" {...register('location')} error={errors.location?.message} />
+        {/* Location dropdown: company assets only, when allotted */}
+        {selectedStatus === 'allotted' && isCompany && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-[var(--color-text-secondary)]">Location *</label>
+            <div ref={locationRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setLocationOpen((v) => !v)}
+                className="w-full border border-[var(--color-border)] rounded-lg px-3 py-2 text-left text-sm flex justify-between items-center bg-white hover:border-[var(--color-primary)] transition-colors"
+              >
+                <span className={location ? 'text-[var(--color-text)]' : 'text-[var(--color-text-secondary)]'}>
+                  {location || 'Select office location...'}
+                </span>
+                <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+              </button>
+              {locationOpen && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-[var(--color-border)] rounded-lg shadow-lg">
+                  <div className="p-2 border-b border-[var(--color-border)]">
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Search location..."
+                      value={locationSearch}
+                      onChange={(e) => setLocationSearch(e.target.value)}
+                      className="w-full text-sm px-2 py-1.5 border border-[var(--color-border)] rounded focus:outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+                  <div className="max-h-52 overflow-y-auto">
+                    {filteredLocations.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-[var(--color-text-secondary)]">No locations found</div>
+                    )}
+                    {filteredLocations.map((loc) => (
+                      <button
+                        key={loc}
+                        type="button"
+                        onClick={() => {
+                          setValue('location', loc)
+                          setLocationOpen(false)
+                          setLocationSearch('')
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-[var(--color-border)] last:border-0 ${loc === location ? 'bg-blue-50' : ''}`}
+                      >
+                        {loc}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            {errors.location && (
+              <p className="text-xs text-[var(--color-danger)]">{errors.location.message}</p>
+            )}
+          </div>
         )}
       </form>
     </Modal>
