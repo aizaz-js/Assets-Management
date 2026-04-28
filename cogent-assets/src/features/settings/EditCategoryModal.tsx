@@ -11,6 +11,7 @@ import { useUpdateCategory, type CategoryConfig } from '@/hooks/useCategories'
 
 const schema = z.object({
   label: z.string().min(1, 'Label is required'),
+  tag_prefix: z.string().min(1, 'Prefix is required').max(8, 'Max 8 characters'),
   is_active: z.boolean(),
 })
 type FormValues = z.infer<typeof schema>
@@ -35,18 +36,23 @@ export function EditCategoryModal({ open, onClose, category }: EditCategoryModal
     handleSubmit,
     control,
     reset,
+    watch,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       label: category.label,
+      tag_prefix: category.tag_prefix,
       is_active: category.is_active,
     },
   })
 
+  const tagPrefixVal = watch('tag_prefix')
+
   useEffect(() => {
     if (open) reset({
       label: category.label,
+      tag_prefix: category.tag_prefix,
       is_active: category.is_active,
     })
   }, [open, category, reset])
@@ -56,6 +62,7 @@ export function EditCategoryModal({ open, onClose, category }: EditCategoryModal
       await updateCategory.mutateAsync({
         ...category,
         label: values.label,
+        tag_prefix: values.tag_prefix.toUpperCase().trim(),
         is_active: values.is_active,
       })
       toast.success('Category updated')
@@ -98,6 +105,23 @@ export function EditCategoryModal({ open, onClose, category }: EditCategoryModal
           {...register('label')}
           error={errors.label?.message}
         />
+
+        <div>
+          <Input
+            label="Tag Prefix *"
+            placeholder="e.g. LT, MP, CLED"
+            {...register('tag_prefix', {
+              setValueAs: (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, ''),
+            })}
+            error={errors.tag_prefix?.message}
+          />
+          {tagPrefixVal && (
+            <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+              Preview: <span className="font-mono font-semibold">{tagPrefixVal.toUpperCase()}-0001</span>
+              {' '}· This prefix will auto-fill when creating assets
+            </p>
+          )}
+        </div>
 
         <Controller
           name="is_active"

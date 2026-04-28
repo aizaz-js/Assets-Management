@@ -46,10 +46,22 @@ export function AssetTable({
     classification,
     asset_type: assetType,
     status: statusFilter !== 'all' ? (statusFilter as AssetStatus) : undefined,
-    search: searchQuery || undefined,
   })
 
-  const assets = [...(rawData ?? [])].sort((a, b) => a.asset_tag.localeCompare(b.asset_tag))
+  const searchLower = searchQuery.toLowerCase()
+  const assets = [...(rawData ?? [])]
+    .filter((a) => {
+      if (!searchQuery) return true
+      return (
+        a.asset_tag.toLowerCase().includes(searchLower) ||
+        (a.specs ?? '').toLowerCase().includes(searchLower) ||
+        (a.serial_number ?? '').toLowerCase().includes(searchLower) ||
+        (a.allotted_user?.name ?? '').toLowerCase().includes(searchLower) ||
+        (a.allotted_user?.email ?? '').toLowerCase().includes(searchLower) ||
+        (a.location ?? '').toLowerCase().includes(searchLower)
+      )
+    })
+    .sort((a, b) => a.asset_tag.localeCompare(b.asset_tag))
   const total = assets.length
 
   return (
@@ -107,14 +119,16 @@ export function AssetTable({
               <Th>Specs</Th>
               <Th>Price</Th>
               <Th>Vendor</Th>
-              <Th>{assetType === 'mobile' ? 'IMEI' : 'Serial No.'}</Th>
+              {classification !== 'company_allocated' && (
+                <Th>{assetType === 'mobile' ? 'IMEI' : 'Serial No.'}</Th>
+              )}
               <Th>{classification === 'employee_allocated' ? 'Allotted To' : 'Location'}</Th>
               <Th>Status</Th>
               <Th>Actions</Th>
             </tr>
           </TableHead>
           <TableBody>
-            {isLoading && <TableSkeleton rows={5} cols={9} />}
+            {isLoading && <TableSkeleton rows={5} cols={classification === 'company_allocated' ? 8 : 9} />}
             {!isLoading && assets.map((asset, i) => (
               <Tr key={asset.id} onClick={() => setViewAssetId(asset.id)}>
                 <Td className="text-[var(--color-text-secondary)] text-xs">
@@ -130,9 +144,11 @@ export function AssetTable({
                 </Td>
                 <Td className="whitespace-nowrap">{formatPKR(asset.price_pkr)}</Td>
                 <Td>{asset.vendor_name}</Td>
-                <Td>
-                  <span className="font-mono text-xs">{asset.serial_number ?? '—'}</span>
-                </Td>
+                {classification !== 'company_allocated' && (
+                  <Td>
+                    <span className="font-mono text-xs">{asset.serial_number ?? '—'}</span>
+                  </Td>
+                )}
                 <Td>
                   {classification === 'employee_allocated' ? (
                     asset.status === 'allotted' && asset.allotted_user ? (

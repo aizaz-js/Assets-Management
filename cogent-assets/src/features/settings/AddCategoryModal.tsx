@@ -51,6 +51,7 @@ const ICON_OPTIONS = [
 
 const schema = z.object({
   name: z.string().min(1, 'Name is required'),
+  tag_prefix: z.string().min(1, 'Prefix is required').max(8, 'Max 8 characters'),
 })
 type FormValues = z.infer<typeof schema>
 
@@ -69,11 +70,14 @@ export function AddCategoryModal({ open, onClose, classification, nextSortOrder 
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: '' },
+    defaultValues: { name: '', tag_prefix: '' },
   })
+
+  const tagPrefixVal = watch('tag_prefix')
 
   function handleClose() {
     reset()
@@ -88,6 +92,7 @@ export function AddCategoryModal({ open, onClose, classification, nextSortOrder 
         classification,
         icon: selectedIcon,
         sort_order: nextSortOrder,
+        tag_prefix: values.tag_prefix.trim().toUpperCase(),
       })
       toast.success(`${values.name} category added`)
       handleClose()
@@ -119,12 +124,29 @@ export function AddCategoryModal({ open, onClose, classification, nextSortOrder 
           <span className="font-medium text-[var(--color-text)]">{classLabel}</span>
         </div>
 
-        <Input
-          label="Display Name *"
-          placeholder="e.g. Tablet"
-          {...register('name')}
-          error={errors.name?.message}
-        />
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="Display Name *"
+            placeholder="e.g. Tablet"
+            {...register('name')}
+            error={errors.name?.message}
+          />
+          <div>
+            <Input
+              label="Tag Prefix *"
+              placeholder="e.g. LT, MP, CLED"
+              {...register('tag_prefix', {
+                setValueAs: (v: string) => v.toUpperCase().replace(/[^A-Z0-9]/g, ''),
+              })}
+              error={errors.tag_prefix?.message}
+            />
+            {tagPrefixVal && (
+              <p className="mt-1 text-[10px] text-[var(--color-text-secondary)]">
+                Preview: <span className="font-mono font-semibold">{tagPrefixVal.toUpperCase()}-0001</span>
+              </p>
+            )}
+          </div>
+        </div>
 
         <div>
           <p className="text-sm font-medium text-[var(--color-text)] mb-2">Icon *</p>

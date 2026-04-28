@@ -20,7 +20,6 @@ const schema = z.object({
     }),
   role: z.enum(['admin', 'employee']),
   designation: z.string().optional(),
-  department: z.string().optional(),
 })
 type FormValues = z.infer<typeof schema>
 
@@ -69,7 +68,6 @@ export function AddEmployeeModal({ open, onClose }: AddEmployeeModalProps) {
         email: values.email.trim().toLowerCase(),
         role: values.role,
         designation: values.designation?.trim() || null,
-        department: values.department?.trim() || null,
         status: 'active',
         manually_created: true,
       })
@@ -119,7 +117,6 @@ export function AddEmployeeModal({ open, onClose }: AddEmployeeModalProps) {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input label="Designation" {...register('designation')} error={errors.designation?.message} />
-          <Input label="Department" {...register('department')} error={errors.department?.message} />
         </div>
 
         <Controller
