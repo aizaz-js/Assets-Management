@@ -68,9 +68,10 @@ export function UserDetailDrawer({ profile, open, onClose }: UserDetailDrawerPro
       const { error } = await supabase.from('profiles').delete().eq('id', profile!.id)
       if (error) throw error
 
+      qc.removeQueries({ queryKey: ['users'] })
       qc.invalidateQueries({ queryKey: ['users'] })
       qc.invalidateQueries({ queryKey: ['assets'] })
-      qc.invalidateQueries({ queryKey: ['user-assets', profile!.id] })
+      qc.removeQueries({ queryKey: ['user-assets', profile!.id] })
 
       toast.success(`${profile!.name} has been removed`)
       if (!profile!.manually_created) {

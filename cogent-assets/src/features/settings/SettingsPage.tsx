@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Pencil, LayoutGrid, Plus, Trash2 } from 'lucide-react'
 import * as LucideIcons from 'lucide-react'
@@ -21,15 +21,35 @@ function CategoryCard({
   onEdit,
   onToggle,
   onDelete,
+  onUpdatePrefix,
   toggling,
 }: {
   category: CategoryConfig
   onEdit: (c: CategoryConfig) => void
   onToggle: (c: CategoryConfig) => void
   onDelete: (c: CategoryConfig) => void
+  onUpdatePrefix: (c: CategoryConfig, newPrefix: string) => Promise<void>
   toggling: boolean
 }) {
+  const [prefixVal, setPrefixVal] = useState(category.tag_prefix)
+  const [saving, setSaving] = useState(false)
   const Icon = getIcon(category.icon)
+
+  useEffect(() => { setPrefixVal(category.tag_prefix) }, [category.tag_prefix])
+
+  async function savePrefix() {
+    const cleaned = prefixVal.trim().toUpperCase()
+    if (!cleaned || cleaned === category.tag_prefix) {
+      setPrefixVal(category.tag_prefix)
+      return
+    }
+    setSaving(true)
+    try {
+      await onUpdatePrefix(category, cleaned)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <motion.div
@@ -81,17 +101,31 @@ function CategoryCard({
         <p className="text-xs text-[var(--color-text-secondary)] mt-0.5 font-mono">{category.type_key}</p>
       </div>
 
-      {/* Tag prefix badge */}
-      <div className="flex items-center gap-2">
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-semibold bg-[var(--color-primary)]/8 text-[var(--color-primary)]">
-          {category.tag_prefix}-####
-        </span>
-        {!category.is_active && (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">
-            Inactive
+      {/* Tag prefix — inline editable */}
+      <div>
+        <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Tag Prefix</p>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center border border-[var(--color-border)] rounded overflow-hidden">
+            <input
+              value={prefixVal}
+              onChange={(e) => setPrefixVal(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
+              onBlur={savePrefix}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur() } }}
+              disabled={saving}
+              className="w-16 px-2 py-1 text-xs font-mono font-semibold text-[var(--color-primary)] bg-[var(--color-primary)]/5 text-center outline-none disabled:opacity-60"
+            />
+          </div>
+          <span className="text-[10px] text-gray-400 font-mono whitespace-nowrap">
+            → {prefixVal || 'OTH'}-0001
           </span>
-        )}
+        </div>
       </div>
+
+      {!category.is_active && (
+        <span className="inline-flex items-center self-start px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">
+          Inactive
+        </span>
+      )}
     </motion.div>
   )
 }
@@ -127,11 +161,19 @@ export function SettingsPage() {
     }
   }
 
+  async function handleUpdatePrefix(category: CategoryConfig, newPrefix: string) {
+    try {
+      await updateCategory.mutateAsync({ ...category, tag_prefix: newPrefix })
+      toast.success(`Tag prefix updated to ${newPrefix}`)
+    } catch {
+      toast.error('Failed to update tag prefix')
+    }
+  }
+
   async function handleDelete() {
     if (!deleteCategory) return
     setDeleting(true)
     try {
-      // Check if any assets exist for this category
       const { count } = await supabase
         .from('assets')
         .select('id', { count: 'exact', head: true })
@@ -164,7 +206,6 @@ export function SettingsPage() {
         description="Configure asset categories and system preferences"
       />
 
-      {/* Section: Asset Categories */}
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-4">
           <LayoutGrid className="w-4 h-4 text-[var(--color-primary)]" />
@@ -177,7 +218,7 @@ export function SettingsPage() {
         {isLoading ? (
           <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))' }}>
             {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="card p-4 h-32 animate-pulse bg-gray-50" />
+              <div key={i} className="card p-4 h-36 animate-pulse bg-gray-50" />
             ))}
           </div>
         ) : (
@@ -206,6 +247,7 @@ export function SettingsPage() {
                     onEdit={setEditCategory}
                     onToggle={handleToggle}
                     onDelete={setDeleteCategory}
+                    onUpdatePrefix={handleUpdatePrefix}
                     toggling={togglingKey === cat.type_key}
                   />
                 ))}
@@ -236,6 +278,7 @@ export function SettingsPage() {
                     onEdit={setEditCategory}
                     onToggle={handleToggle}
                     onDelete={setDeleteCategory}
+                    onUpdatePrefix={handleUpdatePrefix}
                     toggling={togglingKey === cat.type_key}
                   />
                 ))}
@@ -269,7 +312,7 @@ export function SettingsPage() {
         onClose={() => setDeleteCategory(null)}
         onConfirm={handleDelete}
         title={`Delete '${deleteCategory?.label}'?`}
-        description={`This will remove it from the category grid. Existing assets of this type will not be deleted.`}
+        description="This will remove it from the category grid. Existing assets of this type will not be deleted."
         confirmLabel="Delete"
         variant="danger"
         loading={deleting}

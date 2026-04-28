@@ -19,7 +19,7 @@ export function useCategories() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('asset_categories')
-        .select('id, name, slug, classification, icon, is_active, sort_order')
+        .select('id, name, slug, classification, icon, is_active, sort_order, tag_prefix')
         .order('classification', { ascending: true })
         .order('sort_order', { ascending: true })
 
@@ -29,7 +29,7 @@ export function useCategories() {
         id: row.id,
         type_key: row.slug ?? '',
         label: row.name ?? ASSET_TYPE_LABELS[row.slug ?? ''] ?? '',
-        tag_prefix: ASSET_TAG_PREFIXES[row.slug ?? ''] ?? 'OTH',
+        tag_prefix: row.tag_prefix ?? ASSET_TAG_PREFIXES[row.slug ?? ''] ?? 'OTH',
         classification: (row.classification ?? 'employee_allocated') as CategoryConfig['classification'],
         is_active: row.is_active ?? true,
         sort_order: row.sort_order ?? 0,
@@ -48,6 +48,7 @@ export function useUpdateCategory() {
         .from('asset_categories')
         .update({
           name: config.label,
+          tag_prefix: config.tag_prefix,
           is_active: config.is_active,
           icon: config.icon ?? null,
         })
@@ -66,6 +67,7 @@ export function useAddCategory() {
       classification: 'employee_allocated' | 'company_allocated'
       icon: string
       sort_order: number
+      tag_prefix: string
     }) => {
       const slug = values.name.toLowerCase().replace(/\s+/g, '_')
       const { error } = await supabase.from('asset_categories').insert({
@@ -75,6 +77,7 @@ export function useAddCategory() {
         icon: values.icon,
         is_active: true,
         sort_order: values.sort_order,
+        tag_prefix: values.tag_prefix.toUpperCase() || 'OTH',
       })
       if (error) throw error
     },

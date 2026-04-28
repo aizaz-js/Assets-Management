@@ -107,14 +107,16 @@ export function AssetTable({
               <Th>Specs</Th>
               <Th>Price</Th>
               <Th>Vendor</Th>
-              <Th>{assetType === 'mobile' ? 'IMEI' : 'Serial No.'}</Th>
+              {classification !== 'company_allocated' && (
+                <Th>{assetType === 'mobile' ? 'IMEI' : 'Serial No.'}</Th>
+              )}
               <Th>{classification === 'employee_allocated' ? 'Allotted To' : 'Location'}</Th>
               <Th>Status</Th>
               <Th>Actions</Th>
             </tr>
           </TableHead>
           <TableBody>
-            {isLoading && <TableSkeleton rows={5} cols={9} />}
+            {isLoading && <TableSkeleton rows={5} cols={classification === 'company_allocated' ? 8 : 9} />}
             {!isLoading && assets.map((asset, i) => (
               <Tr key={asset.id} onClick={() => setViewAssetId(asset.id)}>
                 <Td className="text-[var(--color-text-secondary)] text-xs">
@@ -130,9 +132,11 @@ export function AssetTable({
                 </Td>
                 <Td className="whitespace-nowrap">{formatPKR(asset.price_pkr)}</Td>
                 <Td>{asset.vendor_name}</Td>
-                <Td>
-                  <span className="font-mono text-xs">{asset.serial_number ?? '—'}</span>
-                </Td>
+                {classification !== 'company_allocated' && (
+                  <Td>
+                    <span className="font-mono text-xs">{asset.serial_number ?? '—'}</span>
+                  </Td>
+                )}
                 <Td>
                   {classification === 'employee_allocated' ? (
                     asset.status === 'allotted' && asset.allotted_user ? (
