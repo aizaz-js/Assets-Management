@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Download } from 'lucide-react'
@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { useCategories } from '@/hooks/useCategories'
+import { Pagination } from '@/components/ui/Pagination'
 import { cn } from '@/lib/utils'
 
 // ─── Employee summary ────────────────────────────────────────────────────────
@@ -165,17 +166,27 @@ function formatLocations(locations: string[]): string {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 15
+
 export function SummaryPage() {
   const [activeTab, setActiveTab] = useState<'employee' | 'company'>('employee')
+  const [empPage, setEmpPage] = useState(1)
+  const [coPage, setCoPage] = useState(1)
   const { data: employeeRows = [], isLoading: empLoading } = useEmployeeSummary()
   const { data: companyRows = [], isLoading: coLoading } = useCompanySummary()
   const { data: categories = [] } = useCategories()
+
+  useEffect(() => { setEmpPage(1) }, [activeTab])
+  useEffect(() => { setCoPage(1) }, [activeTab])
 
   // Enrich company rows with labels from categories
   const enrichedCompanyRows = companyRows.map((row) => {
     const cat = categories.find((c) => c.type_key === row.assetType)
     return { ...row, label: cat?.label ?? row.assetType.replace(/_/g, ' ') }
   }).sort((a, b) => a.label.localeCompare(b.label))
+
+  const pagedEmployeeRows = employeeRows.slice((empPage - 1) * PAGE_SIZE, empPage * PAGE_SIZE)
+  const pagedCompanyRows = enrichedCompanyRows.slice((coPage - 1) * PAGE_SIZE, coPage * PAGE_SIZE)
 
   // Employee KPIs
   const totalEmployees  = employeeRows.length
@@ -262,9 +273,9 @@ export function SummaryPage() {
                   {!empLoading && employeeRows.length === 0 && (
                     <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-[var(--color-text-secondary)]">No assets currently allotted</td></tr>
                   )}
-                  {!empLoading && employeeRows.map((row, i) => (
+                  {!empLoading && pagedEmployeeRows.map((row, i) => (
                     <tr key={row.userId} className={i % 2 === 0 ? 'bg-white' : 'bg-[var(--color-bg-secondary)]'}>
-                      <td className="px-4 py-2.5 text-xs text-[var(--color-text-secondary)]">{i + 1}</td>
+                      <td className="px-4 py-2.5 text-xs text-[var(--color-text-secondary)]">{(empPage - 1) * PAGE_SIZE + i + 1}</td>
                       <td className="px-4 py-2.5 font-medium text-[var(--color-text)]">{row.name}</td>
                       <td className="px-4 py-2.5 text-[var(--color-text-secondary)] text-xs">{row.designation ?? '—'}</td>
                       {[row.laptops, row.mobiles, row.monitors, row.other].map((v, j) => (
@@ -280,6 +291,9 @@ export function SummaryPage() {
                 </tbody>
               </table>
             </div>
+            {!empLoading && employeeRows.length > 0 && (
+              <Pagination page={empPage} pageSize={PAGE_SIZE} total={employeeRows.length} onPageChange={setEmpPage} />
+            )}
           </div>
         </>
       )}
@@ -317,9 +331,9 @@ export function SummaryPage() {
                   {!coLoading && enrichedCompanyRows.length === 0 && (
                     <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-[var(--color-text-secondary)]">No company assets found</td></tr>
                   )}
-                  {!coLoading && enrichedCompanyRows.map((row, i) => (
+                  {!coLoading && pagedCompanyRows.map((row, i) => (
                     <tr key={row.assetType} className={i % 2 === 0 ? 'bg-white' : 'bg-[var(--color-bg-secondary)]'}>
-                      <td className="px-4 py-2.5 text-xs text-[var(--color-text-secondary)]">{i + 1}</td>
+                      <td className="px-4 py-2.5 text-xs text-[var(--color-text-secondary)]">{(coPage - 1) * PAGE_SIZE + i + 1}</td>
                       <td className="px-4 py-2.5 font-medium text-[var(--color-text)] capitalize">{row.label}</td>
                       <td className="px-4 py-2.5 text-center">
                         <span className="font-bold text-[var(--color-primary)]">{row.total}</span>
@@ -338,6 +352,9 @@ export function SummaryPage() {
                 </tbody>
               </table>
             </div>
+            {!coLoading && enrichedCompanyRows.length > 0 && (
+              <Pagination page={coPage} pageSize={PAGE_SIZE} total={enrichedCompanyRows.length} onPageChange={setCoPage} />
+            )}
           </div>
         </>
       )}

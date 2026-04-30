@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Eye, Pencil, ArrowLeft, Plus, Wrench, X } from 'lucide-react'
 import {
@@ -9,6 +9,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SearchInput } from '@/components/ui/SearchInput'
+import { Pagination } from '@/components/ui/Pagination'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { AssetDetailDrawer } from './AssetDetailDrawer'
@@ -32,6 +33,8 @@ interface AssetTableProps {
   onSearchChange: (v: string) => void
 }
 
+const PAGE_SIZE = 15
+
 export function AssetTable({
   classification, assetType, onBack, onAddAsset,
   statusFilter, onStatusFilterChange,
@@ -41,6 +44,7 @@ export function AssetTable({
   const [editAsset, setEditAsset] = useState<Asset | null>(null)
   const [repairAsset, setRepairAsset] = useState<Asset | null>(null)
   const [retireAsset, setRetireAsset] = useState<Asset | null>(null)
+  const [page, setPage] = useState(1)
 
   const { data: rawData, isLoading } = useAssets({
     classification,
@@ -63,6 +67,9 @@ export function AssetTable({
     })
     .sort((a, b) => a.asset_tag.localeCompare(b.asset_tag))
   const total = assets.length
+  const pagedAssets = assets.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  useEffect(() => { setPage(1) }, [searchQuery, statusFilter, assetType])
 
   return (
     <motion.div
@@ -129,10 +136,10 @@ export function AssetTable({
           </TableHead>
           <TableBody>
             {isLoading && <TableSkeleton rows={5} cols={classification === 'company_allocated' ? 8 : 9} />}
-            {!isLoading && assets.map((asset, i) => (
+            {!isLoading && pagedAssets.map((asset, i) => (
               <Tr key={asset.id} onClick={() => setViewAssetId(asset.id)}>
                 <Td className="text-[var(--color-text-secondary)] text-xs">
-                  {i + 1}
+                  {(page - 1) * PAGE_SIZE + i + 1}
                 </Td>
                 <Td>
                   <span className="font-mono font-semibold text-[var(--color-primary)]">{asset.asset_tag}</span>
@@ -221,6 +228,9 @@ export function AssetTable({
             actionLabel="Add Asset"
             onAction={onAddAsset}
           />
+        )}
+        {!isLoading && assets.length > 0 && (
+          <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
         )}
       </div>
 
