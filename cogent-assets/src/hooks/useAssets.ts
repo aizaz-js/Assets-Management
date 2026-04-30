@@ -273,6 +273,22 @@ export function useAssetAuditLog(assetId: string | null) {
 	});
 }
 
+export function useDeleteAsset() {
+	const qc = useQueryClient()
+	return useMutation({
+		mutationFn: async (id: string) => {
+			const { error: repairErr } = await supabase.from('repair_records').delete().eq('asset_id', id)
+			if (repairErr && repairErr.code !== '42501') throw repairErr
+			const { error } = await supabase.from('assets').delete().eq('id', id)
+			if (error) throw error
+		},
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: ['assets'] })
+			qc.invalidateQueries({ queryKey: ['repairs'] })
+		},
+	})
+}
+
 export async function generateAssetTag(prefix: string): Promise<string> {
 	const { data } = await supabase
 		.from('assets')

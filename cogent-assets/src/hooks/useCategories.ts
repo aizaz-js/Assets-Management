@@ -104,3 +104,39 @@ export function useDeleteCategory() {
     },
   })
 }
+
+export function useReorderCategories() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (items: { id: string; sort_order: number }[]) => {
+      for (const item of items) {
+        const { error } = await supabase
+          .from('asset_categories')
+          .update({ sort_order: item.sort_order })
+          .eq('id', item.id)
+        if (error) throw error
+      }
+    },
+    onMutate: async (items) => {
+      await qc.cancelQueries({ queryKey: ['categories'] })
+      const previous = qc.getQueryData<CategoryConfig[]>(['categories'])
+      qc.setQueryData<CategoryConfig[]>(['categories'], (old) => {
+        if (!old) return old
+        const orderMap = new Map(items.map((i) => [i.id, i.sort_order]))
+        return old.map((cat) => ({
+          ...cat,
+          sort_order: orderMap.get(cat.id) ?? cat.sort_order,
+        }))
+      })
+      return { previous }
+    },
+    onError: (_err, _items, context) => {
+      if (context?.previous) {
+        qc.setQueryData(['categories'], context.previous)
+      }
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['categories'] })
+    },
+  })
+}
