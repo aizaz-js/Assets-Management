@@ -1,74 +1,95 @@
-import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
-import { Spinner } from '@/components/ui/Spinner'
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
+import { Spinner } from '@/components/ui/Spinner';
 
+/**
+ * CallbackPage handles the logic after a successful Google OAuth redirect.
+ * It ensures the session is established, checks the email domain,
+ * and verifies that the user has an 'admin' role before allowing access.
+ */
 export function CallbackPage() {
-  const navigate = useNavigate()
+	const navigate = useNavigate();
 
-  useEffect(() => {
-    async function handleCallback() {
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+	useEffect(() => {
+		// We use onAuthStateChange to capture the session as soon as the Supabase client
+		// processes the access_token from the URL fragment.
+		const {
+			data: { subscription },
+		} = supabase.auth.onAuthStateChange(async (event, session) => {
+			if (event === 'SIGNED_IN' && session) {
+				try {
+					const email = session.user.email ?? '';
+					const allowedDomain =
+						import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'cogentlabs.co';
 
-        if (sessionError || !session) {
-          navigate('/login?error=no_session', { replace: true })
-          return
-        }
+					// Step 1: Strict Domain Verification
+					if (!email.endsWith('@' + allowedDomain)) {
+						await supabase.auth.signOut();
+						navigate('/login?error=wrong_domain', { replace: true });
+						return;
+					}
 
-        const email = session.user.email ?? ''
-        const allowedDomain = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'cogentlabs.co'
+					// Step 2: Fetch Profile
+					// We query by ID (primary) and fall back to email if necessary
+					let { data: profile, error } = await supabase
+						.from('profiles')
+						.select('role, status')
+						.eq('id', session.user.id)
+						.maybeSingle();
 
-        // Step 1: Domain check
-        if (!email.endsWith('@' + allowedDomain)) {
-          await supabase.auth.signOut()
-          navigate('/login?error=wrong_domain', { replace: true })
-          return
-        }
+					// Step 3: Handle race condition for new users
+					// If profile isn't found immediately (trigger delay), retry once after a short delay
+					if (!profile) {
+						await new Promise((resolve) => setTimeout(resolve, 1500));
+						const { data: retryProfile } = await supabase
+							.from('profiles')
+							.select('role, status')
+							.eq('id', session.user.id)
+							.maybeSingle();
+						profile = retryProfile;
+					}
 
-        // Step 2: Wait for the handle_new_user trigger to create the profile
-        await new Promise((resolve) => setTimeout(resolve, 1500))
+					// Step 4: Role-Based Access Control
+					// Only users with the 'admin' role are permitted
+					if (!profile || profile.role !== 'admin') {
+						await supabase.auth.signOut();
+						navigate('/login?error=not_admin', { replace: true });
+						return;
+					}
 
-        // Step 3: Look up profile by auth user id
-        const { data: profileById } = await supabase
-          .from('profiles')
-          .select('id, role, status')
-          .eq('id', session.user.id)
-          .maybeSingle()
+					// Success: Redirect to the assets dashboard
+					navigate('/assets', { replace: true });
+				} catch (err) {
+					console.error('Auth Callback Error:', err);
+					navigate('/login?error=auth', { replace: true });
+				}
+			}
 
-        // Step 4: If not found by id, try matching by email (manually-created profiles)
-        let resolvedProfile = profileById
-        if (!resolvedProfile) {
-          const { data: profileByEmail } = await supabase
-            .from('profiles')
-            .select('id, role, status')
-            .eq('email', email)
-            .maybeSingle()
-          resolvedProfile = profileByEmail
-        }
+			// Fallback: If after a few seconds no session is found and no token is in the URL
+			else if (event === 'INITIAL_SESSION' && !session) {
+				const timeout = setTimeout(() => {
+					if (!window.location.hash.includes('access_token')) {
+						navigate('/login?error=no_session', { replace: true });
+					}
+				}, 3000);
+				return () => clearTimeout(timeout);
+			}
+		});
 
-        // Step 5: Only admins can access the portal
-        if (!resolvedProfile || resolvedProfile.role !== 'admin') {
-          await supabase.auth.signOut()
-          navigate('/login?error=not_admin', { replace: true })
-          return
-        }
+		return () => {
+			subscription.unsubscribe();
+		};
+	}, [navigate]);
 
-        navigate('/assets', { replace: true })
-      } catch {
-        navigate('/login?error=no_session', { replace: true })
-      }
-    }
-
-    handleCallback()
-  }, [navigate])
-
-  return (
-    <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center">
-      <div className="text-center">
-        <Spinner size="lg" className="text-[var(--color-primary)] mx-auto" />
-        <p className="mt-4 text-sm text-[var(--color-text-secondary)]">Signing you in…</p>
-      </div>
-    </div>
-  )
+	return (
+		<div className='min-h-screen bg-[var(--color-bg)] flex items-center justify-center'>
+			<div className='text-center'>
+				<Spinner size='lg' className='text-[var(--color-primary)] mx-auto' />
+				<p className='mt-4 text-sm text-[var(--color-text-secondary)] font-medium'>
+					Verifying credentials...
+				</p>
+			</div>
+		</div>
+	);
 }
