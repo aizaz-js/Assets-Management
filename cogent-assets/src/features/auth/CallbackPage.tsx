@@ -12,34 +12,35 @@ export function CallbackPage() {
 	const navigate = useNavigate();
 
 	useEffect(() => {
-		// We use onAuthStateChange to capture the session as soon as the Supabase client
-		// processes the access_token from the URL fragment.
+		let fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
+
 		const {
 			data: { subscription },
 		} = supabase.auth.onAuthStateChange(async (event, session) => {
 			if (event === 'SIGNED_IN' && session) {
+				// Cancel the fallback timer — we have a valid session
+				if (fallbackTimeout) {
+					clearTimeout(fallbackTimeout);
+					fallbackTimeout = null;
+				}
+
 				try {
 					const email = session.user.email ?? '';
 					const allowedDomain =
 						import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'cogentlabs.co';
 
-					// Step 1: Strict Domain Verification
 					if (!email.endsWith('@' + allowedDomain)) {
 						await supabase.auth.signOut();
 						navigate('/login?error=wrong_domain', { replace: true });
 						return;
 					}
 
-					// Step 2: Fetch Profile
-					// We query by ID (primary) and fall back to email if necessary
-					let { data: profile, error } = await supabase
+					let { data: profile } = await supabase
 						.from('profiles')
 						.select('role, status')
 						.eq('id', session.user.id)
 						.maybeSingle();
 
-					// Step 3: Handle race condition for new users
-					// If profile isn't found immediately (trigger delay), retry once after a short delay
 					if (!profile) {
 						await new Promise((resolve) => setTimeout(resolve, 1500));
 						const { data: retryProfile } = await supabase
@@ -50,35 +51,29 @@ export function CallbackPage() {
 						profile = retryProfile;
 					}
 
-					// Step 4: Role-Based Access Control
-					// Only users with the 'admin' role are permitted
 					if (!profile || profile.role !== 'admin') {
 						await supabase.auth.signOut();
 						navigate('/login?error=not_admin', { replace: true });
 						return;
 					}
 
-					// Success: Redirect to the assets dashboard
 					navigate('/assets', { replace: true });
 				} catch (err) {
 					console.error('Auth Callback Error:', err);
 					navigate('/login?error=auth', { replace: true });
 				}
-			}
-
-			// Fallback: If after a few seconds no session is found and no token is in the URL
-			else if (event === 'INITIAL_SESSION' && !session) {
-				const timeout = setTimeout(() => {
-					if (!window.location.hash.includes('access_token')) {
-						navigate('/login?error=no_session', { replace: true });
-					}
-				}, 3000);
-				return () => clearTimeout(timeout);
+			} else if (event === 'INITIAL_SESSION' && !session) {
+				// No existing session on load — start a fallback timer in case
+				// the OAuth redirect never completes (e.g. user closed the popup)
+				fallbackTimeout = setTimeout(() => {
+					navigate('/login?error=no_session', { replace: true });
+				}, 5000);
 			}
 		});
 
 		return () => {
 			subscription.unsubscribe();
+			if (fallbackTimeout) clearTimeout(fallbackTimeout);
 		};
 	}, [navigate]);
 
