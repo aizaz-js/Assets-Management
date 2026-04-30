@@ -1,79 +1,94 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { Spinner } from '@/components/ui/Spinner';
 
-/**
- * CallbackPage handles the logic after a successful Google OAuth redirect.
- * It ensures the session is established, checks the email domain,
- * and verifies that the user has an 'admin' role before allowing access.
- */
 export function CallbackPage() {
 	const navigate = useNavigate();
+	// useRef so the timeout ID is reachable by both the event callback
+	// and the useEffect cleanup, regardless of async timing.
+	const fallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
-		let fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
+		async function handleSession(session: Session) {
+			// Clear the fallback timer FIRST — before any async work.
+			if (fallbackTimeoutRef.current) {
+				clearTimeout(fallbackTimeoutRef.current);
+				fallbackTimeoutRef.current = null;
+			}
 
-		const {
-			data: { subscription },
-		} = supabase.auth.onAuthStateChange(async (event, session) => {
-			if (event === 'SIGNED_IN' && session) {
-				// Cancel the fallback timer — we have a valid session
-				if (fallbackTimeout) {
-					clearTimeout(fallbackTimeout);
-					fallbackTimeout = null;
+			try {
+				const email = session.user.email ?? '';
+				const allowedDomain =
+					import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'cogentlabs.co';
+
+				if (!email.endsWith('@' + allowedDomain)) {
+					await supabase.auth.signOut();
+					navigate('/login?error=wrong_domain', { replace: true });
+					return;
 				}
 
-				try {
-					const email = session.user.email ?? '';
-					const allowedDomain =
-						import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? 'cogentlabs.co';
+				let { data: profile } = await supabase
+					.from('profiles')
+					.select('role, status')
+					.eq('id', session.user.id)
+					.maybeSingle();
 
-					if (!email.endsWith('@' + allowedDomain)) {
-						await supabase.auth.signOut();
-						navigate('/login?error=wrong_domain', { replace: true });
-						return;
-					}
-
-					let { data: profile } = await supabase
+				// Retry once — DB trigger for new users can lag by ~1s
+				if (!profile) {
+					await new Promise((resolve) => setTimeout(resolve, 1500));
+					const { data: retryProfile } = await supabase
 						.from('profiles')
 						.select('role, status')
 						.eq('id', session.user.id)
 						.maybeSingle();
-
-					if (!profile) {
-						await new Promise((resolve) => setTimeout(resolve, 1500));
-						const { data: retryProfile } = await supabase
-							.from('profiles')
-							.select('role, status')
-							.eq('id', session.user.id)
-							.maybeSingle();
-						profile = retryProfile;
-					}
-
-					if (!profile || profile.role !== 'admin') {
-						await supabase.auth.signOut();
-						navigate('/login?error=not_admin', { replace: true });
-						return;
-					}
-
-					navigate('/assets', { replace: true });
-				} catch (err) {
-					console.error('Auth Callback Error:', err);
-					navigate('/login?error=auth', { replace: true });
+					profile = retryProfile;
 				}
-			} else if (event === 'INITIAL_SESSION' && !session) {
-				// No existing session on load — start a fallback timer in case
-				// the OAuth redirect never completes (e.g. user closed the popup)
-				fallbackTimeout = setTimeout(() => {
-					navigate('/login?error=no_session', { replace: true });
-				}, 5000);
+
+				if (!profile || profile.role !== 'admin') {
+					await supabase.auth.signOut();
+					navigate('/login?error=not_admin', { replace: true });
+					return;
+				}
+
+				navigate('/assets', { replace: true });
+			} catch (err) {
+				console.error('Auth callback error:', err);
+				navigate('/login?error=auth', { replace: true });
+			}
+		}
+
+		const {
+			data: { subscription },
+		} = supabase.auth.onAuthStateChange((event, session) => {
+			if (event === 'SIGNED_IN' && session) {
+				// Primary path: OAuth code exchange just completed
+				handleSession(session);
+			} else if (event === 'INITIAL_SESSION') {
+				if (session) {
+					// Returning user already has a valid session cookie
+					handleSession(session);
+				} else {
+					// No session yet — OAuth is still in progress.
+					// Start fallback in case the redirect never completes.
+					fallbackTimeoutRef.current = setTimeout(() => {
+						navigate('/login?error=no_session', { replace: true });
+					}, 8000);
+				}
 			}
 		});
 
 		return () => {
+			// Both must be cleaned up. The timeout MUST be cleared here
+			// because returning from handleSession (after navigate) unmounts
+			// this component — and the timeout would otherwise fire on the
+			// new page, overwriting the successful navigation.
 			subscription.unsubscribe();
-			if (fallbackTimeout) clearTimeout(fallbackTimeout);
+			if (fallbackTimeoutRef.current) {
+				clearTimeout(fallbackTimeoutRef.current);
+				fallbackTimeoutRef.current = null;
+			}
 		};
 	}, [navigate]);
 
