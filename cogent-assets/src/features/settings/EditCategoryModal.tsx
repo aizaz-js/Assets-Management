@@ -1,13 +1,14 @@
-import { useEffect } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import toast from 'react-hot-toast'
-import * as LucideIcons from 'lucide-react'
+import { Search } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useUpdateCategory, type CategoryConfig } from '@/hooks/useCategories'
+import { CATEGORY_ICON_OPTIONS, getCategoryIcon } from './categoryIcons'
 
 const schema = z.object({
   label: z.string().min(1, 'Label is required'),
@@ -15,12 +16,6 @@ const schema = z.object({
   is_active: z.boolean(),
 })
 type FormValues = z.infer<typeof schema>
-
-function getIcon(iconName: string | undefined): React.ComponentType<{ className?: string; size?: number }> {
-  if (!iconName) return LucideIcons.Package as React.ComponentType<{ className?: string; size?: number }>
-  const Icon = (LucideIcons as Record<string, unknown>)[iconName] as React.ComponentType<{ className?: string; size?: number }> | undefined
-  return Icon ?? (LucideIcons.Package as React.ComponentType<{ className?: string; size?: number }>)
-}
 
 interface EditCategoryModalProps {
   open: boolean
@@ -30,6 +25,8 @@ interface EditCategoryModalProps {
 
 export function EditCategoryModal({ open, onClose, category }: EditCategoryModalProps) {
   const updateCategory = useUpdateCategory()
+  const [selectedIcon, setSelectedIcon] = useState(category.icon ?? 'Package')
+  const [iconQuery, setIconQuery] = useState('')
 
   const {
     register,
@@ -50,12 +47,25 @@ export function EditCategoryModal({ open, onClose, category }: EditCategoryModal
   const tagPrefixVal = watch('tag_prefix')
 
   useEffect(() => {
-    if (open) reset({
-      label: category.label,
-      tag_prefix: category.tag_prefix,
-      is_active: category.is_active,
-    })
+    if (open) {
+      reset({
+        label: category.label,
+        tag_prefix: category.tag_prefix,
+        is_active: category.is_active,
+      })
+      setSelectedIcon(category.icon ?? 'Package')
+      setIconQuery('')
+    }
   }, [open, category, reset])
+
+  const filteredIcons = useMemo(() => {
+    const q = iconQuery.trim().toLowerCase()
+    if (!q) return CATEGORY_ICON_OPTIONS
+    return CATEGORY_ICON_OPTIONS.filter((opt) =>
+      opt.name.toLowerCase().includes(q) ||
+      (opt.keywords ?? '').toLowerCase().includes(q)
+    )
+  }, [iconQuery])
 
   async function onSubmit(values: FormValues) {
     try {
@@ -64,6 +74,7 @@ export function EditCategoryModal({ open, onClose, category }: EditCategoryModal
         label: values.label,
         tag_prefix: values.tag_prefix.toUpperCase().trim(),
         is_active: values.is_active,
+        icon: selectedIcon,
       })
       toast.success('Category updated')
       onClose()
@@ -72,7 +83,7 @@ export function EditCategoryModal({ open, onClose, category }: EditCategoryModal
     }
   }
 
-  const Icon = getIcon(category.icon)
+  const SelectedIcon = getCategoryIcon(selectedIcon)
 
   return (
     <Modal
@@ -91,7 +102,7 @@ export function EditCategoryModal({ open, onClose, category }: EditCategoryModal
     >
       <div className="flex items-center gap-3 mb-5 p-3 bg-[var(--color-bg)] rounded-lg">
         <div className="w-10 h-10 flex items-center justify-center bg-[var(--color-primary)]/10 rounded-lg">
-          <Icon size={22} className="text-[var(--color-primary)]" />
+          <SelectedIcon size={22} className="text-[var(--color-primary)]" />
         </div>
         <div>
           <p className="text-xs text-[var(--color-text-secondary)]">slug</p>
@@ -121,6 +132,47 @@ export function EditCategoryModal({ open, onClose, category }: EditCategoryModal
               {' '}· This prefix will auto-fill when creating assets
             </p>
           )}
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-medium text-[var(--color-text)]">Icon *</p>
+            <span className="text-xs text-[var(--color-text-secondary)]">{filteredIcons.length} icons</span>
+          </div>
+          <div className="relative mb-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <input
+              type="text"
+              value={iconQuery}
+              onChange={(e) => setIconQuery(e.target.value)}
+              placeholder="Search icons (e.g. coffee, lamp, router)"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-[var(--color-border)] rounded-md outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+            />
+          </div>
+          <div className="grid grid-cols-6 gap-2 max-h-56 overflow-y-auto border border-[var(--color-border)] rounded-lg p-3">
+            {filteredIcons.length === 0 ? (
+              <div className="col-span-6 text-center text-sm text-gray-400 py-6">
+                No icons match "{iconQuery}"
+              </div>
+            ) : (
+              filteredIcons.map(({ name, icon: Icon }) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setSelectedIcon(name)}
+                  title={name}
+                  className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-colors hover:bg-gray-50 border-2 ${
+                    selectedIcon === name
+                      ? 'bg-[var(--color-primary)]/10 border-[var(--color-primary)]'
+                      : 'border-transparent'
+                  }`}
+                >
+                  <Icon className="w-5 h-5 text-gray-700" />
+                  <span className="text-[9px] text-gray-500 text-center leading-tight truncate w-full">{name}</span>
+                </button>
+              ))
+            )}
+          </div>
         </div>
 
         <Controller

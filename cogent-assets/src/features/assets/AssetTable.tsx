@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Eye, Pencil, ArrowLeft, Plus, Wrench, X } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { Eye, Pencil, ArrowLeft, Plus, Wrench, Archive, Trash2 } from 'lucide-react'
 import {
   Table, TableHead, TableBody, Th, Td, Tr, TableSkeleton,
 } from '@/components/ui/Table'
@@ -11,11 +12,12 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { SearchInput } from '@/components/ui/SearchInput'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AssetDetailDrawer } from './AssetDetailDrawer'
 import { EditAssetModal } from './EditAssetModal'
 import { StartRepairModal } from '@/features/repair/StartRepairModal'
 import { RetireAssetModal } from './RetireAssetModal'
-import { useAssets } from '@/hooks/useAssets'
+import { useAssets, useDeleteAsset } from '@/hooks/useAssets'
 import { ASSET_TYPE_LABELS, STATUS_OPTIONS } from '@/lib/constants'
 import { formatPKR } from '@/lib/utils'
 import type { Asset, Classification, AssetStatus } from '@/types'
@@ -41,6 +43,8 @@ export function AssetTable({
   const [editAsset, setEditAsset] = useState<Asset | null>(null)
   const [repairAsset, setRepairAsset] = useState<Asset | null>(null)
   const [retireAsset, setRetireAsset] = useState<Asset | null>(null)
+  const [deleteAsset, setDeleteAsset] = useState<Asset | null>(null)
+  const deleteAssetMutation = useDeleteAsset()
 
   const { data: rawData, isLoading } = useAssets({
     classification,
@@ -199,13 +203,23 @@ export function AssetTable({
                     {asset.status !== 'retired' && (
                       <Tooltip content="Retire asset">
                         <button
-                          className="p-1.5 rounded hover:bg-[var(--color-danger-light)] transition-colors text-slate-500 hover:text-[var(--color-danger)]"
+                          className="p-1.5 rounded hover:bg-amber-50 transition-colors text-slate-500 hover:text-amber-600"
                           onClick={() => setRetireAsset(asset)}
+                          aria-label="Retire asset"
                         >
-                          <X className="w-4 h-4" />
+                          <Archive className="w-4 h-4" />
                         </button>
                       </Tooltip>
                     )}
+                    <Tooltip content="Delete asset">
+                      <button
+                        className="p-1.5 rounded hover:bg-red-50 transition-colors text-slate-500 hover:text-red-600"
+                        onClick={() => setDeleteAsset(asset)}
+                        aria-label="Delete asset"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </Tooltip>
                   </div>
                 </Td>
               </Tr>
@@ -242,6 +256,30 @@ export function AssetTable({
       {retireAsset && (
         <RetireAssetModal open={!!retireAsset} onClose={() => setRetireAsset(null)} asset={retireAsset} />
       )}
+
+      <ConfirmDialog
+        open={!!deleteAsset}
+        onClose={() => setDeleteAsset(null)}
+        onConfirm={async () => {
+          if (!deleteAsset) return
+          try {
+            await deleteAssetMutation.mutateAsync(deleteAsset.id)
+            toast.success(`Asset ${deleteAsset.asset_tag} deleted`)
+            setDeleteAsset(null)
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to delete asset')
+          }
+        }}
+        title="Delete this asset?"
+        description={
+          deleteAsset
+            ? `${deleteAsset.asset_tag} will be permanently deleted along with its repair history. This cannot be undone — use Retire instead if you want to keep records.`
+            : ''
+        }
+        confirmLabel="Delete permanently"
+        variant="danger"
+        loading={deleteAssetMutation.isPending}
+      />
     </motion.div>
   )
 }

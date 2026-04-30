@@ -1,53 +1,14 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import toast from 'react-hot-toast'
-import {
-  Laptop, Smartphone, Monitor, MousePointer, Keyboard, Camera,
-  HardDrive, Briefcase, Package, Armchair, Layout, Video,
-  Speaker, Zap, PenTool, Wifi, Headphones, Printer, Phone,
-  Tablet, Watch, Tv, Battery, Cpu, Server, Database,
-  Shield, Wrench, Star, Tag, Box,
-} from 'lucide-react'
+import { Search } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useAddCategory } from '@/hooks/useCategories'
-
-const ICON_OPTIONS = [
-  { name: 'Laptop', icon: Laptop },
-  { name: 'Smartphone', icon: Smartphone },
-  { name: 'Monitor', icon: Monitor },
-  { name: 'Mouse', icon: MousePointer },
-  { name: 'Keyboard', icon: Keyboard },
-  { name: 'Camera', icon: Camera },
-  { name: 'HardDrive', icon: HardDrive },
-  { name: 'Briefcase', icon: Briefcase },
-  { name: 'Package', icon: Package },
-  { name: 'Chair', icon: Armchair },
-  { name: 'Layout', icon: Layout },
-  { name: 'Video', icon: Video },
-  { name: 'Speaker', icon: Speaker },
-  { name: 'Zap', icon: Zap },
-  { name: 'PenTool', icon: PenTool },
-  { name: 'Wifi', icon: Wifi },
-  { name: 'Headphones', icon: Headphones },
-  { name: 'Printer', icon: Printer },
-  { name: 'Phone', icon: Phone },
-  { name: 'Tablet', icon: Tablet },
-  { name: 'Watch', icon: Watch },
-  { name: 'Tv', icon: Tv },
-  { name: 'Battery', icon: Battery },
-  { name: 'Cpu', icon: Cpu },
-  { name: 'Server', icon: Server },
-  { name: 'Database', icon: Database },
-  { name: 'Shield', icon: Shield },
-  { name: 'Wrench', icon: Wrench },
-  { name: 'Star', icon: Star },
-  { name: 'Tag', icon: Tag },
-  { name: 'Box', icon: Box },
-]
+import { CATEGORY_ICON_OPTIONS } from './categoryIcons'
 
 const schema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -65,6 +26,7 @@ interface AddCategoryModalProps {
 export function AddCategoryModal({ open, onClose, classification, nextSortOrder }: AddCategoryModalProps) {
   const addCategory = useAddCategory()
   const [selectedIcon, setSelectedIcon] = useState('Package')
+  const [iconQuery, setIconQuery] = useState('')
 
   const {
     register,
@@ -79,9 +41,19 @@ export function AddCategoryModal({ open, onClose, classification, nextSortOrder 
 
   const tagPrefixVal = watch('tag_prefix')
 
+  const filteredIcons = useMemo(() => {
+    const q = iconQuery.trim().toLowerCase()
+    if (!q) return CATEGORY_ICON_OPTIONS
+    return CATEGORY_ICON_OPTIONS.filter((opt) =>
+      opt.name.toLowerCase().includes(q) ||
+      (opt.keywords ?? '').toLowerCase().includes(q)
+    )
+  }, [iconQuery])
+
   function handleClose() {
     reset()
     setSelectedIcon('Package')
+    setIconQuery('')
     onClose()
   }
 
@@ -149,23 +121,43 @@ export function AddCategoryModal({ open, onClose, classification, nextSortOrder 
         </div>
 
         <div>
-          <p className="text-sm font-medium text-[var(--color-text)] mb-2">Icon *</p>
-          <div className="grid grid-cols-6 gap-2 max-h-52 overflow-y-auto border border-[var(--color-border)] rounded-lg p-3">
-            {ICON_OPTIONS.map(({ name, icon: Icon }) => (
-              <button
-                key={name}
-                type="button"
-                onClick={() => setSelectedIcon(name)}
-                className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-colors hover:bg-gray-50 border-2 ${
-                  selectedIcon === name
-                    ? 'bg-[var(--color-primary)]/10 border-[var(--color-primary)]'
-                    : 'border-transparent'
-                }`}
-              >
-                <Icon className="w-5 h-5 text-gray-700" />
-                <span className="text-[9px] text-gray-500 text-center leading-tight">{name}</span>
-              </button>
-            ))}
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-medium text-[var(--color-text)]">Icon *</p>
+            <span className="text-xs text-[var(--color-text-secondary)]">{filteredIcons.length} icons</span>
+          </div>
+          <div className="relative mb-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <input
+              type="text"
+              value={iconQuery}
+              onChange={(e) => setIconQuery(e.target.value)}
+              placeholder="Search icons (e.g. coffee, lamp, router)"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-[var(--color-border)] rounded-md outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+            />
+          </div>
+          <div className="grid grid-cols-6 gap-2 max-h-64 overflow-y-auto border border-[var(--color-border)] rounded-lg p-3">
+            {filteredIcons.length === 0 ? (
+              <div className="col-span-6 text-center text-sm text-gray-400 py-6">
+                No icons match "{iconQuery}"
+              </div>
+            ) : (
+              filteredIcons.map(({ name, icon: Icon }) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setSelectedIcon(name)}
+                  title={name}
+                  className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-colors hover:bg-gray-50 border-2 ${
+                    selectedIcon === name
+                      ? 'bg-[var(--color-primary)]/10 border-[var(--color-primary)]'
+                      : 'border-transparent'
+                  }`}
+                >
+                  <Icon className="w-5 h-5 text-gray-700" />
+                  <span className="text-[9px] text-gray-500 text-center leading-tight truncate w-full">{name}</span>
+                </button>
+              ))
+            )}
           </div>
         </div>
       </form>
