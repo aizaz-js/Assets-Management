@@ -31,7 +31,7 @@ export function CallbackPage() {
 
 				let { data: profile } = await supabase
 					.from('profiles')
-					.select('role, status')
+					.select('id, role, status')
 					.eq('id', session.user.id)
 					.maybeSingle();
 
@@ -40,10 +40,29 @@ export function CallbackPage() {
 					await new Promise((resolve) => setTimeout(resolve, 1500));
 					const { data: retryProfile } = await supabase
 						.from('profiles')
-						.select('role, status')
+						.select('id, role, status')
 						.eq('id', session.user.id)
 						.maybeSingle();
 					profile = retryProfile;
+				}
+
+				// Manually-created profiles have a random UUID — look up by email instead
+				if (!profile && email) {
+					const { data: emailProfile } = await supabase
+						.from('profiles')
+						.select('id, role, status')
+						.eq('email', email.toLowerCase())
+						.maybeSingle();
+
+					if (emailProfile) {
+						// Reconcile: update the profile's id to match the real auth user id
+						// so future logins resolve by id without needing the email fallback
+						await supabase
+							.from('profiles')
+							.update({ id: session.user.id })
+							.eq('email', email.toLowerCase());
+						profile = { ...emailProfile, id: session.user.id };
+					}
 				}
 
 				if (!profile || profile.role !== 'admin') {

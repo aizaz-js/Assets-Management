@@ -18,39 +18,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
 
-  async function fetchOrCreateProfile(sessionUser: User) {
-    const { data, error } = await supabase
+  async function fetchProfile(sessionUser: User) {
+    // Look up by id first; fall back to email for manually-created profiles
+    // whose id was assigned by AddEmployeeModal before the user's first OAuth login.
+    let { data } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', sessionUser.id)
-      .single()
+      .maybeSingle()
 
-    if (error && error.code === 'PGRST116') {
-      // Profile not found — create it (first sign-in race condition guard)
-      const { data: created } = await supabase
+    if (!data && sessionUser.email) {
+      const { data: byEmail } = await supabase
         .from('profiles')
-        .insert({
-          id: sessionUser.id,
-          name:
-            sessionUser.user_metadata?.full_name ??
-            sessionUser.email?.split('@')[0] ??
-            'Unknown',
-          email: sessionUser.email ?? '',
-          avatar_url: sessionUser.user_metadata?.avatar_url ?? null,
-        })
-        .select()
-        .single()
-      setProfile(created)
-    } else {
-      setProfile(data)
+        .select('*')
+        .eq('email', sessionUser.email.toLowerCase())
+        .maybeSingle()
+      data = byEmail
     }
+
+    setProfile(data)
   }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       if (session?.user) {
-        fetchOrCreateProfile(session.user).finally(() => setLoading(false))
+        fetchProfile(session.user).finally(() => setLoading(false))
       } else {
         setLoading(false)
       }
@@ -60,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (_event, session: Session | null) => {
         setUser(session?.user ?? null)
         if (session?.user) {
-          fetchOrCreateProfile(session.user)
+          fetchProfile(session.user)
         } else {
           setProfile(null)
         }
