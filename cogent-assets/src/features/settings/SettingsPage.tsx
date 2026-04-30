@@ -1,12 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Pencil, LayoutGrid, Plus, Trash2 } from 'lucide-react'
+import { Pencil, LayoutGrid, Plus, Trash2, GripVertical } from 'lucide-react'
 import * as LucideIcons from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { EditCategoryModal } from './EditCategoryModal'
 import { AddCategoryModal } from './AddCategoryModal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { useCategories, useUpdateCategory, useDeleteCategory, type CategoryConfig } from '@/hooks/useCategories'
+import {
+  useCategories,
+  useUpdateCategory,
+  useDeleteCategory,
+  useReorderCategories,
+  type CategoryConfig,
+} from '@/hooks/useCategories'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -16,6 +22,22 @@ function getIcon(iconName: string | undefined): React.ComponentType<{ className?
   return Icon ?? (LucideIcons.Package as React.ComponentType<{ className?: string; size?: number }>)
 }
 
+interface CategoryCardProps {
+  category: CategoryConfig
+  onEdit: (c: CategoryConfig) => void
+  onToggle: (c: CategoryConfig) => void
+  onDelete: (c: CategoryConfig) => void
+  onUpdatePrefix: (c: CategoryConfig, newPrefix: string) => Promise<void>
+  toggling: boolean
+  isDragging: boolean
+  isDragOver: boolean
+  onDragStart: (e: React.DragEvent) => void
+  onDragOver: (e: React.DragEvent) => void
+  onDragLeave: () => void
+  onDrop: (e: React.DragEvent) => void
+  onDragEnd: () => void
+}
+
 function CategoryCard({
   category,
   onEdit,
@@ -23,16 +45,17 @@ function CategoryCard({
   onDelete,
   onUpdatePrefix,
   toggling,
-}: {
-  category: CategoryConfig
-  onEdit: (c: CategoryConfig) => void
-  onToggle: (c: CategoryConfig) => void
-  onDelete: (c: CategoryConfig) => void
-  onUpdatePrefix: (c: CategoryConfig, newPrefix: string) => Promise<void>
-  toggling: boolean
-}) {
+  isDragging,
+  isDragOver,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
+}: CategoryCardProps) {
   const [prefixVal, setPrefixVal] = useState(category.tag_prefix)
   const [saving, setSaving] = useState(false)
+  const [draggable, setDraggable] = useState(false)
   const Icon = getIcon(category.icon)
 
   useEffect(() => { setPrefixVal(category.tag_prefix) }, [category.tag_prefix])
@@ -52,20 +75,32 @@ function CategoryCard({
   }
 
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.97 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.15 }}
-      className={`card p-4 flex flex-col gap-3 relative transition-opacity ${!category.is_active ? 'opacity-50' : ''}`}
+    <div
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={() => { setDraggable(false); onDragEnd() }}
+      className={`card p-4 flex flex-col gap-3 relative transition-all ${!category.is_active ? 'opacity-50' : ''} ${isDragOver ? 'ring-2 ring-[var(--color-primary)] ring-offset-2' : ''} ${isDragging ? 'opacity-40' : ''}`}
     >
-      {/* Header row */}
       <div className="flex items-start justify-between">
-        <div className={`w-10 h-10 flex items-center justify-center rounded-xl ${category.is_active ? 'bg-[var(--color-primary)]/10' : 'bg-gray-100'}`}>
-          <Icon
-            size={22}
-            className={category.is_active ? 'text-[var(--color-primary)]' : 'text-gray-400'}
-          />
+        <div className="flex items-center gap-1.5">
+          <button
+            onMouseDown={() => setDraggable(true)}
+            onMouseUp={() => setDraggable(false)}
+            className="p-1 rounded hover:bg-gray-100 cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 transition-colors"
+            title="Drag to reorder"
+            aria-label="Drag handle"
+          >
+            <GripVertical className="w-3.5 h-3.5" />
+          </button>
+          <div className={`w-10 h-10 flex items-center justify-center rounded-xl ${category.is_active ? 'bg-[var(--color-primary)]/10' : 'bg-gray-100'}`}>
+            <Icon
+              size={22}
+              className={category.is_active ? 'text-[var(--color-primary)]' : 'text-gray-400'}
+            />
+          </div>
         </div>
         <div className="flex items-center gap-1.5">
           <button
@@ -95,13 +130,11 @@ function CategoryCard({
         </div>
       </div>
 
-      {/* Label */}
       <div>
         <p className="text-sm font-semibold text-[var(--color-text)] leading-tight">{category.label}</p>
         <p className="text-xs text-[var(--color-text-secondary)] mt-0.5 font-mono">{category.type_key}</p>
       </div>
 
-      {/* Tag prefix — inline editable */}
       <div>
         <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Tag Prefix</p>
         <div className="flex items-center gap-2">
@@ -126,7 +159,91 @@ function CategoryCard({
           Inactive
         </span>
       )}
-    </motion.div>
+    </div>
+  )
+}
+
+interface SortableCategoryGroupProps {
+  categories: CategoryConfig[]
+  onEdit: (c: CategoryConfig) => void
+  onToggle: (c: CategoryConfig) => void
+  onDelete: (c: CategoryConfig) => void
+  onUpdatePrefix: (c: CategoryConfig, newPrefix: string) => Promise<void>
+  togglingKey: string | null
+  onReorder: (newOrder: CategoryConfig[]) => void
+}
+
+function SortableCategoryGroup({
+  categories,
+  onEdit,
+  onToggle,
+  onDelete,
+  onUpdatePrefix,
+  togglingKey,
+  onReorder,
+}: SortableCategoryGroupProps) {
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const draggingIdRef = useRef<string | null>(null)
+
+  function handleDragStart(e: React.DragEvent, id: string) {
+    draggingIdRef.current = id
+    setDraggingId(id)
+    e.dataTransfer.effectAllowed = 'move'
+    try { e.dataTransfer.setData('text/plain', id) } catch { /* ignore */ }
+  }
+
+  function handleDragOver(e: React.DragEvent, id: string) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragOverId !== id) setDragOverId(id)
+  }
+
+  function handleDrop(e: React.DragEvent, targetId: string) {
+    e.preventDefault()
+    const sourceId = draggingIdRef.current
+    setDragOverId(null)
+    setDraggingId(null)
+    draggingIdRef.current = null
+    if (!sourceId || sourceId === targetId) return
+
+    const sourceIdx = categories.findIndex((c) => c.id === sourceId)
+    const targetIdx = categories.findIndex((c) => c.id === targetId)
+    if (sourceIdx === -1 || targetIdx === -1) return
+
+    const next = [...categories]
+    const [moved] = next.splice(sourceIdx, 1)
+    next.splice(targetIdx, 0, moved)
+    onReorder(next)
+  }
+
+  function handleDragEnd() {
+    setDragOverId(null)
+    setDraggingId(null)
+    draggingIdRef.current = null
+  }
+
+  return (
+    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))' }}>
+      {categories.map((cat) => (
+        <CategoryCard
+          key={cat.type_key}
+          category={cat}
+          onEdit={onEdit}
+          onToggle={onToggle}
+          onDelete={onDelete}
+          onUpdatePrefix={onUpdatePrefix}
+          toggling={togglingKey === cat.type_key}
+          isDragging={draggingId === cat.id}
+          isDragOver={dragOverId === cat.id && draggingId !== cat.id}
+          onDragStart={(e) => handleDragStart(e, cat.id)}
+          onDragOver={(e) => handleDragOver(e, cat.id)}
+          onDragLeave={() => setDragOverId((prev) => (prev === cat.id ? null : prev))}
+          onDrop={(e) => handleDrop(e, cat.id)}
+          onDragEnd={handleDragEnd}
+        />
+      ))}
+    </div>
   )
 }
 
@@ -140,6 +257,7 @@ export function SettingsPage() {
   const { data: categories, isLoading } = useCategories()
   const updateCategory = useUpdateCategory()
   const deleteCategoryMutation = useDeleteCategory()
+  const reorderCategories = useReorderCategories()
 
   const employeeCategories = (categories ?? [])
     .filter((c) => c.classification === 'employee_allocated')
@@ -167,6 +285,15 @@ export function SettingsPage() {
       toast.success(`Tag prefix updated to ${newPrefix}`)
     } catch {
       toast.error('Failed to update tag prefix')
+    }
+  }
+
+  async function handleReorder(newOrder: CategoryConfig[]) {
+    const items = newOrder.map((cat, idx) => ({ id: cat.id, sort_order: idx + 1 }))
+    try {
+      await reorderCategories.mutateAsync(items)
+    } catch {
+      toast.error('Failed to reorder categories')
     }
   }
 
@@ -211,7 +338,7 @@ export function SettingsPage() {
           <LayoutGrid className="w-4 h-4 text-[var(--color-primary)]" />
           <h2 className="text-sm font-semibold text-[var(--color-text)]">Asset Categories</h2>
           <span className="text-xs text-[var(--color-text-secondary)] ml-1">
-            Manage display names, tag prefixes, and visibility
+            Drag <GripVertical className="inline w-3 h-3 align-middle text-gray-400" /> to reorder · this order is shown on the Assets page
           </span>
         </div>
 
@@ -223,7 +350,6 @@ export function SettingsPage() {
           </div>
         ) : (
           <>
-            {/* Employee Assets */}
             <div className="mb-6">
               <div className="flex items-center gap-3 mb-3">
                 <span className="w-2 h-2 rounded-full bg-[var(--color-allotted)]" />
@@ -239,22 +365,17 @@ export function SettingsPage() {
                   Add Category
                 </button>
               </div>
-              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))' }}>
-                {employeeCategories.map((cat) => (
-                  <CategoryCard
-                    key={cat.type_key}
-                    category={cat}
-                    onEdit={setEditCategory}
-                    onToggle={handleToggle}
-                    onDelete={setDeleteCategory}
-                    onUpdatePrefix={handleUpdatePrefix}
-                    toggling={togglingKey === cat.type_key}
-                  />
-                ))}
-              </div>
+              <SortableCategoryGroup
+                categories={employeeCategories}
+                onEdit={setEditCategory}
+                onToggle={handleToggle}
+                onDelete={setDeleteCategory}
+                onUpdatePrefix={handleUpdatePrefix}
+                togglingKey={togglingKey}
+                onReorder={handleReorder}
+              />
             </div>
 
-            {/* Company Assets */}
             <div>
               <div className="flex items-center gap-3 mb-3">
                 <span className="w-2 h-2 rounded-full bg-[var(--color-primary)]" />
@@ -270,19 +391,15 @@ export function SettingsPage() {
                   Add Category
                 </button>
               </div>
-              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))' }}>
-                {companyCategories.map((cat) => (
-                  <CategoryCard
-                    key={cat.type_key}
-                    category={cat}
-                    onEdit={setEditCategory}
-                    onToggle={handleToggle}
-                    onDelete={setDeleteCategory}
-                    onUpdatePrefix={handleUpdatePrefix}
-                    toggling={togglingKey === cat.type_key}
-                  />
-                ))}
-              </div>
+              <SortableCategoryGroup
+                categories={companyCategories}
+                onEdit={setEditCategory}
+                onToggle={handleToggle}
+                onDelete={setDeleteCategory}
+                onUpdatePrefix={handleUpdatePrefix}
+                togglingKey={togglingKey}
+                onReorder={handleReorder}
+              />
             </div>
           </>
         )}

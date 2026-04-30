@@ -88,6 +88,45 @@ export function useAddCategory() {
   })
 }
 
+export function useReorderCategories() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (items: { id: string; sort_order: number }[]) => {
+      const results = await Promise.all(
+        items.map((item) =>
+          supabase
+            .from('asset_categories')
+            .update({ sort_order: item.sort_order })
+            .eq('id', item.id)
+        )
+      )
+      const failed = results.find((r) => r.error)
+      if (failed?.error) throw failed.error
+    },
+    onMutate: async (items) => {
+      await qc.cancelQueries({ queryKey: ['categories'] })
+      const previous = qc.getQueryData<CategoryConfig[]>(['categories'])
+      if (previous) {
+        const orderMap = new Map(items.map((i) => [i.id, i.sort_order]))
+        qc.setQueryData<CategoryConfig[]>(
+          ['categories'],
+          previous.map((c) =>
+            orderMap.has(c.id) ? { ...c, sort_order: orderMap.get(c.id)! } : c
+          )
+        )
+      }
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) qc.setQueryData(['categories'], context.previous)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['categories'] })
+      qc.invalidateQueries({ queryKey: ['assets'] })
+    },
+  })
+}
+
 export function useDeleteCategory() {
   const qc = useQueryClient()
   return useMutation({
