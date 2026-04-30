@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Table, TableHead, TableBody, Th, Td, Tr, TableSkeleton } from '@/components/ui/Table'
@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { SearchInput } from '@/components/ui/SearchInput'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Pagination } from '@/components/ui/Pagination'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { UserDetailDrawer } from './UserDetailDrawer'
@@ -26,18 +27,26 @@ const roleBadgeVariant: Record<UserRole, 'admin' | 'manager' | 'finance' | 'empl
 }
 
 export function UsersPage() {
+  const PAGE_SIZE = 15
+
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | ''>('')
   const [selectedProfile, setSelectedProfile] = useState<ProfileWithAssetCount | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [editProfile, setEditProfile] = useState<ProfileWithAssetCount | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ProfileWithAssetCount | null>(null)
+  const [page, setPage] = useState(1)
 
   const { data: users, isLoading } = useUsers({
     status: statusFilter || undefined,
     search: search || undefined,
   })
   const deleteUser = useDeleteUser()
+
+  const allUsers = users ?? []
+  const pagedUsers = allUsers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  useEffect(() => { setPage(1) }, [search, statusFilter])
 
   async function handleDelete() {
     if (!deleteTarget) return
@@ -110,7 +119,7 @@ export function UsersPage() {
           </TableHead>
           <TableBody>
             {isLoading && <TableSkeleton rows={6} cols={6} />}
-            {!isLoading && (users ?? []).map((user) => (
+            {!isLoading && pagedUsers.map((user) => (
               <Tr key={user.id} onClick={() => setSelectedProfile(user)}>
                 <Td>
                   <div className="flex items-center gap-3">
@@ -163,12 +172,15 @@ export function UsersPage() {
           </TableBody>
         </Table>
 
-        {!isLoading && (users ?? []).length === 0 && (
+        {!isLoading && allUsers.length === 0 && (
           <EmptyState
             icon={Users}
             title="No users found"
             description={search ? 'Try adjusting your search' : 'Users appear here after signing in'}
           />
+        )}
+        {!isLoading && allUsers.length > 0 && (
+          <Pagination page={page} pageSize={PAGE_SIZE} total={allUsers.length} onPageChange={setPage} />
         )}
       </div>
 
